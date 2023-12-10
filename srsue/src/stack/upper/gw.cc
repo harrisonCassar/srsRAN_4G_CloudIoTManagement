@@ -866,6 +866,12 @@ void CloudIoTManagement::handle_packet(const uint8_t *pdu_buffer, size_t num_byt
     printf("CloudIOTManagement: Unrecognized FLOW field (value: %u) for the Modem packet.\n", flow);
     return;
   }
+
+  /*
+   * If we haven't returned early, then we've successfully sent a packet to the
+   * SIM card, and are expecting a response, so we handle it accordingly.
+   */
+  handle_sim_response();
 }
 
 void CloudIoTManagement::send_to_sim(const ModemPacket &packet) {
@@ -873,6 +879,16 @@ void CloudIoTManagement::send_to_sim(const ModemPacket &packet) {
 
   if (debug) {
     printf("Sending Modem packet to SIM card...\n");
+  }
+
+  // TODO(hcassar): Implement.
+}
+
+void CloudIoTManagement::handle_sim_response() {
+  assert(initialized);
+
+  if (debug) {
+    printf("Receiving Modem packet from SIM card...\n");
   }
 
   // TODO(hcassar): Implement.

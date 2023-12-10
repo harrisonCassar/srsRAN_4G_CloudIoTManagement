@@ -536,6 +536,14 @@ public:
    */
   void send_to_sim(const ModemPacket &packet);
 
+  /**
+   * @brief Handle SIM response, which involves decoding the APDU message,
+   * constructing the corresponding Modem packet (as defined by the
+   * CloudIoTManagement custom protocol), and sending it to our cloud UDP
+   * server.
+   */
+  void handle_sim_response();
+
 private:
   /**
    * @brief Decoder helper method for IoT Data Modem packets. Returns whether
