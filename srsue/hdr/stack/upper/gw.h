@@ -105,11 +105,31 @@ public:
   static constexpr uint16_t CLOUDIOTMANAGEMENT_PORT_NUMBER = 6002;
 
   /**
+   * @brief Structure that holds the full components for an 8-byte temporenc
+   * timestamp, which includes precision down to milliseconds.
+   */
+  struct Timestamp {
+  public:
+    uint16_t year;
+    uint8_t month;
+    uint8_t day;
+    uint8_t hour;
+    uint8_t minute;
+    uint8_t second;
+    uint16_t millisecond;
+  };
+
+  /**
    * @brief Structure representing the Modem packet used in the custom
    * CloudIoTManagement protocol.
    */
   struct ModemPacket {
   public:
+    /**
+     * @brief Offset of FLOW field in Modem packet.
+     */
+    static constexpr size_t MODEMPACKET_OFFSET_FLOW_FIELD = 0;
+
     /**
      * @brief Enum for Flow field in Modem Packets.
      */
@@ -157,6 +177,11 @@ public:
   struct IoTPacket : ModemPacket {
   public:
     /**
+     * @brief Offset of TOPIC field in IoT Modem packet.
+     */
+    static constexpr size_t IOTPACKET_OFFSET_TOPIC_FIELD = ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD;
+
+    /**
      * @brief Enum for Topic field in IoT Modem Packets.
      */
     enum Topic : uint8_t {
@@ -185,6 +210,11 @@ public:
    */
   struct CarrierSwitchPacket : ModemPacket {
   public:
+    /**
+     * @brief Offset of TOPIC field in CarrierSwitch Modem packet.
+     */
+    static constexpr size_t CARRIERSWITCHPACKET_OFFSET_TOPIC_FIELD = ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD;
+
     /**
      * @brief Enum for Topic field in CarrierSwitch Modem packets.
      */
@@ -226,11 +256,31 @@ public:
   struct IoTDataPacket final : IoTPacket {
   public:
     /**
+     * @brief Offset of DEVICE_ID field in IoT Data Modem packet.
+     */
+    static constexpr size_t IOTDATAPACKET_OFFSET_DEVICE_ID_FIELD = IoTPacket::IOTPACKET_OFFSET_TOPIC_FIELD + 1;
+
+    /**
+     * @brief Offset of TIMESTAMP field in IoT Data Modem packet.
+     */
+    static constexpr size_t IOTDATAPACKET_OFFSET_TIMESTAMP_FIELD = IoTPacket::IOTPACKET_OFFSET_TOPIC_FIELD + 5;
+
+    /**
+     * @brief Offset of DATA_LENGTH field in IoT Data Modem packet.
+     */
+    static constexpr size_t IOTDATAPACKET_OFFSET_DATA_LENGTH_FIELD = IoTPacket::IOTPACKET_OFFSET_TOPIC_FIELD + 13;
+
+    /**
+     * @brief Offset of DATA field in IoT Data Modem packet.
+     */
+    static constexpr size_t IOTDATAPACKET_OFFSET_DATA_FIELD = IoTPacket::IOTPACKET_OFFSET_TOPIC_FIELD + 17;
+
+    /**
      * @brief Constructor for IoTDataPacket.
      */
     IoTDataPacket() : IoTPacket(IoTPacket::Topic::DATA) {}
     IoTDataPacket(uint32_t _device_id,
-                  uint64_t _timestamp,
+                  Timestamp _timestamp,
                   uint32_t _data_length,
                   uint8_t *_data) : device_id(_device_id),
                                     timestamp(_timestamp),
@@ -261,7 +311,7 @@ public:
     virtual size_t get_serialized_length() const override;
 
     uint32_t device_id;
-    uint64_t timestamp;
+    Timestamp timestamp;
     uint32_t data_length;
     uint8_t data[CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_DATA_FIELD_SIZE_BYTES_MAXIMUM];
   };
@@ -272,6 +322,11 @@ public:
    */
   struct IoTStatusPacket final : IoTPacket {
   public:
+    /**
+     * @brief Offset of STATUS field in IoT Status Modem packet.
+     */
+    static constexpr size_t IOTSTATUSPACKET_OFFSET_STATUS_FIELD = IoTPacket::IOTPACKET_OFFSET_TOPIC_FIELD + 1;
+
     /**
      * @brief Enum for Status field in IoT Status Modem packet.
      */
@@ -316,6 +371,11 @@ public:
   struct CarrierSwitchPerformPacket final : CarrierSwitchPacket {
   public:
     /**
+     * @brief Offset of CARRIER_ID field in Carrier Switch Perform Modem packet.
+     */
+    static constexpr size_t CARRIERSWITCHPERFORMPACKET_OFFSET_CARRIER_ID_FIELD = CarrierSwitchPacket::CARRIERSWITCHPACKET_OFFSET_TOPIC_FIELD + 1;
+
+    /**
      * @brief Enum for Status field in IoT Status Modem packet.
      */
     enum Status : uint8_t {
@@ -358,6 +418,16 @@ public:
    */
   struct CarrierSwitchACKPacket final : CarrierSwitchPacket {
   public:
+    /**
+     * @brief Offset of STATUS field in Carrier Switch ACK Modem packet.
+     */
+    static constexpr size_t CARRIERSWITCHACKPACKET_OFFSET_STATUS_FIELD = CarrierSwitchPacket::CARRIERSWITCHPACKET_OFFSET_TOPIC_FIELD + 1;
+
+    /**
+     * @brief Offset of CARRIER_ID field in Carrier Switch ACK Modem packet.
+     */
+    static constexpr size_t CARRIERSWITCHACKPACKET_OFFSET_CARRIER_ID_FIELD = CARRIERSWITCHACKPACKET_OFFSET_STATUS_FIELD;
+
     /**
      * @brief Enum for Status field in Carrier Switch ACK Modem packet.
      */
@@ -526,6 +596,17 @@ private:
    * @returns true if the decoding was successful, false otherwise.
    */
   bool decode_carrier_switch_ack(const uint8_t *packet_buffer, CarrierSwitchACKPacket &packet);
+
+  /**
+   * @brief Helper decoder for an 8-byte timestamp in the temporenc format.
+   *
+   * @param timestamp_buffer const pointer to the buffer holding the timestamp
+   * to decode.
+   * @param num_bytes Size of buffer in bytes hollding the timestamp to decode.
+   *
+   * @return Timestamp object with decoded values.
+   */
+  Timestamp decode_temporenc_timestamp(const uint8_t *timestamp_buffer, size_t num_bytes);
 
   /**
    * @brief Helper to simply print out all fields of the specified IP packet.

@@ -795,11 +795,11 @@ void CloudIoTManagement::handle_packet(const uint8_t *pdu_buffer, size_t num_byt
   }
 
   /* Determine Modem Packet type, and then handle each accordingly (decode and send). */
-  uint8_t flow = pdu_buffer[PDU_HEADER_SIZE_BYTES] & 0xF0;
-  uint8_t topic = pdu_buffer[PDU_HEADER_SIZE_BYTES] & 0x0F;
+  uint8_t flow = pdu_buffer[PDU_HEADER_SIZE_BYTES + ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD] & 0xF0;
   size_t packet_size = num_bytes - PDU_HEADER_SIZE_BYTES;
 
   if (flow == ModemPacket::Flow::IOT) {
+    uint8_t topic = pdu_buffer[PDU_HEADER_SIZE_BYTES + IoTPacket::IOTPACKET_OFFSET_TOPIC_FIELD] & 0x0F;
     if (topic == IoTPacket::Topic::DATA) {
       /* Confirm we have an expected number of bytes, and gracefully handle if not (return early). */
       if (packet_size < CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MINIMUM ||
@@ -837,6 +837,7 @@ void CloudIoTManagement::handle_packet(const uint8_t *pdu_buffer, size_t num_byt
     }
   }
   else if (flow == ModemPacket::Flow::CARRIER_SWITCH) {
+    uint8_t topic = pdu_buffer[PDU_HEADER_SIZE_BYTES + CarrierSwitchPacket::CARRIERSWITCHPACKET_OFFSET_TOPIC_FIELD] & 0x0F;
     if (topic == CarrierSwitchPacket::Topic::PERFORM) {
       /* Confirm we have an expected number of bytes, and gracefully handle if not (return early). */
       if (packet_size != CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES) {
@@ -881,54 +882,140 @@ bool CloudIoTManagement::decode_iot_data(const uint8_t *packet_buffer, IoTDataPa
   assert(packet_buffer != nullptr);
 
   if (debug) {
-    printf("Decoding IoT Data packet...\n");
+    printf("CloudIoTManagement: Decoding IoT Data packet...\n");
   }
 
-  // TODO(hcassar): Implement.
+  /* Extract relevant fields. */
+  uint8_t flow = packet_buffer[ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD] & 0xF0;
+  uint8_t topic = packet_buffer[IoTPacket::IOTPACKET_OFFSET_TOPIC_FIELD] & 0x0F;
+  uint32_t device_id = (packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DEVICE_ID_FIELD + 0] << 24 +
+                        packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DEVICE_ID_FIELD + 1] << 16 +
+                        packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DEVICE_ID_FIELD + 2] << 8 +
+                        packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DEVICE_ID_FIELD + 3] << 0);
+  Timestamp timestamp = decode_temporenc_timestamp(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_TIMESTAMP_FIELD], 8);
+  uint32_t data_length = packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DATA_LENGTH_FIELD];
+  const uint8_t *data = &packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DATA_FIELD];
 
-  // if (modem_packet->flow)
-  // result.flow = firstByte >> 4;
-  // result.topic = firstByte & 0x0F;
+  /* Sanity check header is correct. */
+  if (flow != ModemPacket::Flow::IOT ||
+      topic != IoTPacket::Topic::DATA) {
+    printf("CloudIoTManagement: Header invalid when attempting to decode IoT Data Packet.\n");
+    return false;  // Indicate failed attempt to decode packet.
+  }
 
-  // // Copy payload into the struct
-  // size_t payloadSize = size - 1;
-  // payloadSize = (payloadSize > sizeof(result.payload)) ? sizeof(result.payload) : payloadSize;
-  // std::memcpy(result.payload, buffer + 1, payloadSize);
+  /* Set IoTDataPacket members accordingly. */
+  packet.device_id = device_id;
+  packet.timestamp = timestamp;
+  packet.data_length = data_length;
+  std::memcpy(packet.data, data, data_length);
 
-  return false;
+  /* Indicate successful attempt to decode packet. */
+  return true;
 }
 
 bool CloudIoTManagement::decode_iot_status(const uint8_t *packet_buffer, IoTStatusPacket &packet) {
   assert(packet_buffer != nullptr);
 
   if (debug) {
-    printf("Decoding IoT Status packet...\n");
+    printf("CloudIoTManagement: Decoding IoT Status packet...\n");
   }
 
-  // TODO(hcassar): Implement.
-  return false;
+  /* Extract relevant fields. */
+  uint8_t flow = packet_buffer[ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD] & 0xF0;
+  uint8_t topic = packet_buffer[IoTPacket::IOTPACKET_OFFSET_TOPIC_FIELD] & 0x0F;
+  uint8_t status = packet_buffer[IoTStatusPacket::IOTSTATUSPACKET_OFFSET_STATUS_FIELD] & 0xF0;
+
+  /* Sanity check header is correct. */
+  if (flow != ModemPacket::Flow::IOT ||
+      topic != IoTPacket::Topic::STATUS) {
+    printf("CloudIoTManagement: Header invalid when attempting to decode IoT Status Packet.\n");
+    return false;  // Indicate failed attempt to decode packet.
+  }
+
+  /* Set IoTStatusPacket members accordingly. */
+  packet.status = status;
+
+  /* Indicate successful attempt to decode packet. */
+  return true;
 }
 
 bool CloudIoTManagement::decode_carrier_switch_perform(const uint8_t *packet_buffer, CarrierSwitchPerformPacket &packet) {
   assert(packet_buffer != nullptr);
 
   if (debug) {
-    printf("Decoding Carrier Switch Perform packet...\n");
+    printf("CloudIoTManagement: Decoding Carrier Switch Perform packet...\n");
   }
 
-  // TODO(hcassar): Implement.
-  return false;
+  /* Extract relevant fields. */
+  uint8_t flow = packet_buffer[ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD] & 0xF0;
+  uint8_t topic = packet_buffer[CarrierSwitchPacket::CARRIERSWITCHPACKET_OFFSET_TOPIC_FIELD] 0x0F;
+  uint8_t carrier_id = packet_buffer[CarrierSwitchPerformPacket::CARRIERSWITCHPERFORMPACKET_OFFSET_CARRIER_ID_FIELD] 0xF0;
+
+  /* Sanity check header is correct. */
+  if (flow != ModemPacket::Flow::CARRIER_SWITCH ||
+      topic != CarrierSwitchPacket::Topic::PERFORM) {
+    printf("CloudIoTManagement: Header invalid when attempting to decode Carrier Switch Perform Packet.\n");
+    return false;  // Indicate failed attempt to decode packet.
+  }
+
+  /* Set CarrierSwitchPerformPacket members accordingly. */
+  packet.carrier_id = carrier_id;
+
+  /* Indicate successful attempt to decode packet. */
+  return true;
 }
 
 bool CloudIoTManagement::decode_carrier_switch_ack(const uint8_t *packet_buffer, CarrierSwitchACKPacket &packet) {
   assert(packet_buffer != nullptr);
 
   if (debug) {
-    printf("Decoding Carrier Switch ACK packet...\n");
+    printf("CloudIoTManagement: Decoding Carrier Switch ACK packet...\n");
   }
 
-  // TODO(hcassar): Implement.
-  return false;
+  /* Extract relevant fields. */
+  uint8_t flow = packet_buffer[ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD] & 0xF0;
+  uint8_t topic = packet_buffer[CarrierSwitchPacket::CARRIERSWITCHPACKET_OFFSET_TOPIC_FIELD] 0x0F;
+  uint8_t status = packet_buffer[CarrierSwitchACKPacket::CARRIERSWITCHACKPACKET_OFFSET_STATUS_FIELD] 0xF0;
+  uint8_t carrier_id = packet_buffer[CarrierSwitchACKPacket::CARRIERSWITCHACKPACKET_OFFSET_CARRIER_ID_FIELD] 0x0F;
+
+  /* Sanity check header is correct. */
+  if (flow != ModemPacket::Flow::CARRIER_SWITCH ||
+      topic != CarrierSwitchPacket::Topic::ACK) {
+    printf("CloudIoTManagement: Header invalid when attempting to decode Carrier Switch ACK Packet.\n");
+    return false;  // Indicate failed attempt to decode packet.
+  }
+
+  /* Set CarrierSwitchACKPacket members accordingly. */
+  packet.status = status;
+  packet.carrier_id = carrier_id;
+
+  /* Indicate successful attempt to decode packet. */
+  return true;
+}
+
+CloudIoTManagement::Timestamp CloudIoTManagement::decode_temporenc_timestamp(const uint8_t *timestamp_buffer, size_t num_bytes) {
+  assert(num_bytes == 8);
+
+  /* Timestamp components from the temporenc bytes. */
+  uint16_t year = (timestamp_buffer[0] << 8) | timestamp_buffer[1];
+  uint8_t month = timestamp_buffer[2];
+  uint8_t day = timestamp_buffer[3];
+  uint8_t hour = timestamp_buffer[4];
+  uint8_t minute = timestamp_buffer[5];
+  uint8_t second = timestamp_buffer[6];
+  uint16_t millisecond = (timestamp_buffer[7] << 8);
+
+  /* Populate Timestamp's fields accordingly. */
+  Timestamp timestamp = {};
+  timestamp.year = year;
+  timestamp.month = month;
+  timestamp.day = day;
+  timestamp.hour = hour;
+  timestamp.minute = minute;
+  timestamp.second = second;
+  timestamp.millisecond = millisecond;
+
+  return timestamp;
 }
 
 void CloudIoTManagement::print_pdu(const uint8_t *pdu_buffer, size_t num_bytes) {
