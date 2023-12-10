@@ -888,15 +888,15 @@ bool CloudIoTManagement::decode_iot_data(const uint8_t *packet_buffer, IoTDataPa
   /* Extract relevant fields. */
   ModemPacket::Flow flow = static_cast<ModemPacket::Flow>(packet_buffer[ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD] & 0xF0);
   IoTPacket::Topic topic = static_cast<IoTPacket::Topic>(packet_buffer[IoTPacket::IOTPACKET_OFFSET_TOPIC_FIELD] & 0x0F);
-  uint32_t device_id = (static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DEVICE_ID_FIELD + 0]) << 24 +
-                        static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DEVICE_ID_FIELD + 1]) << 16 +
-                        static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DEVICE_ID_FIELD + 2]) << 8 +
-                        static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DEVICE_ID_FIELD + 3]) << 0);
-  Timestamp timestamp = decode_temporenc_timestamp(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_TIMESTAMP_FIELD], 8);
-  uint32_t data_length = (static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DATA_LENGTH_FIELD + 0]) << 24 +
-                          static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DATA_LENGTH_FIELD + 1]) << 16 +
-                          static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DATA_LENGTH_FIELD + 2]) << 8 +
-                          static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DATA_LENGTH_FIELD + 3]) << 0);
+  uint32_t device_id = ((static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DEVICE_ID_FIELD + 0]) << 24) +
+                        (static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DEVICE_ID_FIELD + 1]) << 16) +
+                        (static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DEVICE_ID_FIELD + 2]) << 8) +
+                        (static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DEVICE_ID_FIELD + 3]) << 0));
+  Timestamp timestamp = decode_temporenc_timestamp(&packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_TIMESTAMP_FIELD], 8);
+  uint32_t data_length = ((static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DATA_LENGTH_FIELD + 0]) << 24) +
+                          (static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DATA_LENGTH_FIELD + 1]) << 16) +
+                          (static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DATA_LENGTH_FIELD + 2]) << 8) +
+                          (static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DATA_LENGTH_FIELD + 3]) << 0));
   const uint8_t *data = &packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DATA_FIELD];
 
   /* Sanity check header is correct. */
@@ -926,7 +926,7 @@ bool CloudIoTManagement::decode_iot_status(const uint8_t *packet_buffer, IoTStat
   /* Extract relevant fields. */
   ModemPacket::Flow flow = static_cast<ModemPacket::Flow>(packet_buffer[ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD] & 0xF0);
   IoTPacket::Topic topic = static_cast<IoTPacket::Topic>(packet_buffer[IoTPacket::IOTPACKET_OFFSET_TOPIC_FIELD] & 0x0F);
-  uint8_t status = packet_buffer[IoTStatusPacket::IOTSTATUSPACKET_OFFSET_STATUS_FIELD] & 0xF0;
+  IoTStatusPacket::Status status = static_cast<IoTStatusPacket::Status>(packet_buffer[IoTStatusPacket::IOTSTATUSPACKET_OFFSET_STATUS_FIELD] & 0xF0);
 
   /* Sanity check header is correct. */
   if (flow != ModemPacket::Flow::IOT ||
@@ -951,8 +951,8 @@ bool CloudIoTManagement::decode_carrier_switch_perform(const uint8_t *packet_buf
 
   /* Extract relevant fields. */
   ModemPacket::Flow flow = static_cast<ModemPacket::Flow>(packet_buffer[ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD] & 0xF0);
-  CarrierSwitchPacket::Topic topic = static_cast<CarrierSwitchPacket::Topic>(packet_buffer[CarrierSwitchPacket::CARRIERSWITCHPACKET_OFFSET_TOPIC_FIELD] 0x0F);
-  CarrierSwitchPacket::CarrierID carrier_id = static_cast<CarrierSwitchPacket::CarrierID>(packet_buffer[CarrierSwitchPerformPacket::CARRIERSWITCHPERFORMPACKET_OFFSET_CARRIER_ID_FIELD] 0xF0);
+  CarrierSwitchPacket::Topic topic = static_cast<CarrierSwitchPacket::Topic>(packet_buffer[CarrierSwitchPacket::CARRIERSWITCHPACKET_OFFSET_TOPIC_FIELD] & 0x0F);
+  CarrierSwitchPacket::CarrierID carrier_id = static_cast<CarrierSwitchPacket::CarrierID>(packet_buffer[CarrierSwitchPerformPacket::CARRIERSWITCHPERFORMPACKET_OFFSET_CARRIER_ID_FIELD] & 0xF0);
 
   /* Sanity check header is correct. */
   if (flow != ModemPacket::Flow::CARRIER_SWITCH ||
@@ -977,9 +977,9 @@ bool CloudIoTManagement::decode_carrier_switch_ack(const uint8_t *packet_buffer,
 
   /* Extract relevant fields. */
   ModemPacket::Flow flow = static_cast<ModemPacket::Flow>(packet_buffer[ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD] & 0xF0);
-  CarrierSwitchPacket::Topic topic = static_cast<CarrierSwitchPacket::Topic>(packet_buffer[CarrierSwitchPacket::CARRIERSWITCHPACKET_OFFSET_TOPIC_FIELD] 0x0F);
-  CarrierSwitchACKPacket::Status status = static_cast<CarrierSwitchACKPacket::Status>(packet_buffer[CarrierSwitchACKPacket::CARRIERSWITCHACKPACKET_OFFSET_STATUS_FIELD] 0xF0);
-  CarrierSwitchPacket::CarrierID carrier_id = static_cast<CarrierSwitchPacket::CarrierID>(packet_buffer[CarrierSwitchACKPacket::CARRIERSWITCHACKPACKET_OFFSET_CARRIER_ID_FIELD] 0x0F);
+  CarrierSwitchPacket::Topic topic = static_cast<CarrierSwitchPacket::Topic>(packet_buffer[CarrierSwitchPacket::CARRIERSWITCHPACKET_OFFSET_TOPIC_FIELD] & 0x0F);
+  CarrierSwitchACKPacket::Status status = static_cast<CarrierSwitchACKPacket::Status>(packet_buffer[CarrierSwitchACKPacket::CARRIERSWITCHACKPACKET_OFFSET_STATUS_FIELD] & 0xF0);
+  CarrierSwitchPacket::CarrierID carrier_id = static_cast<CarrierSwitchPacket::CarrierID>(packet_buffer[CarrierSwitchACKPacket::CARRIERSWITCHACKPACKET_OFFSET_CARRIER_ID_FIELD] & 0x0F);
 
   /* Sanity check header is correct. */
   if (flow != ModemPacket::Flow::CARRIER_SWITCH ||
