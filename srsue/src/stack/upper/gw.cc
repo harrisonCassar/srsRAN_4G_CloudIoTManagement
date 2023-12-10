@@ -25,6 +25,7 @@
 #include "srsran/upper/ipv6.h"
 
 #include <arpa/inet.h>
+#include <cstdint>
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/if_tun.h>
@@ -781,6 +782,10 @@ out:
  * CloudIoTManagement Class Definition
  *****************************************************************************/
 
+CloudIoTManagement::CloudIoTManagement(bool _debug) : debug(_debug) {}
+CloudIoTManagement::CloudIoTManagement() : debug(false) {}
+CloudIoTManagement::~CloudIoTManagement() {}
+
 int CloudIoTManagement::init() {
   assert(!initialized);
 
@@ -788,13 +793,208 @@ int CloudIoTManagement::init() {
 
   /* Mark that we've now been initialized. */
   initialized = true;
+
+  return SRSRAN_SUCCESS;
 }
 
-bool CloudIoTManagement::contains_applicable_packet(uint8_t *packet, int num_bytes) {
+bool contains_applicable_packet(const uint8_t *pdu_buffer, size_t num_bytes) {
+  // TODO(hcassar): Implement.
+  return false;
+}
+
+void CloudIoTManagement::handle_packet(const uint8_t *pdu_buffer, size_t num_bytes) {
+  assert(initialized);
+  assert(pdu_buffer != nullptr);
+  assert(num_bytes >= PDU_HEADER_SIZE_BYTES + 1);  // Every PDU must have at least one valid byte beyond its 28 byte header so that we can determine the custom Modem packet header information.
+
+  size_t packet_size = num_bytes - PDU_HEADER_SIZE_BYTES;
+
+  /* Determine Modem Packet type, and then handle each accordingly (decode and send). */
+  uint8_t flow = pdu_buffer[PDU_HEADER_SIZE_BYTES] & 0xF0;
+  uint8_t topic = pdu_buffer[PDU_HEADER_SIZE_BYTES] & 0x0F;
+
+  if (flow == ModemPacket::Flow::IOT) {
+    if (topic == IoTPacket::Topic::DATA) {
+      /* Confirm we have an expected number of bytes, and gracefully handle if not (return early). */
+      if (packet_size < CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MINIMUM ||
+          packet_size > CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MAXIMUM) {
+        printf("CloudIOTManagement: Although the Modem packet's flow and topic field indicated an IoT Data packet, the determined packet size in bytes was unexpected (got %lu, but expected at least %lu and at most %lu).\n", packet_size, CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MINIMUM, CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MAXIMUM);
+        return;
+      }
+
+      /* Decode packet, and send to the SIM card (if there was no decoding errors). */
+      IoTDataPacket packet;
+      if (decode_iot_data(&pdu_buffer[PDU_HEADER_SIZE_BYTES], packet)) {
+        printf("CloudIOTManagement: An error occured while decoding the IoT Data packet! Dropping packet/avoiding transmission to the SIM card...\n");
+        return;
+      }
+      send_to_sim(packet);
+    }
+    else if (topic == IoTPacket::Topic::STATUS) {
+      /* Confirm we have an expected number of bytes, and gracefully handle if not (return early). */
+      if (packet_size != CLOUDIOTMANAGEMENT_IOT_STATUS_PACKET_SIZE_BYTES) {
+        printf("CloudIOTManagement: Although the Modem packet's flow and topic field indicated an IoT Status packet, the determined packet size in bytes was unexpected (got %lu, but expected %lu).\n", packet_size, CLOUDIOTMANAGEMENT_IOT_STATUS_PACKET_SIZE_BYTES);
+        return;
+      }
+
+      /* Decode packet, and send to the SIM card (if there was no decoding errors). */
+      IoTStatusPacket packet;
+      if (decode_iot_status(&pdu_buffer[PDU_HEADER_SIZE_BYTES], packet)) {
+        printf("CloudIOTManagement: An error occured while decoding the IoT Status packet! Dropping packet/avoiding transmission to the SIM card...\n");
+        return;
+      }
+      send_to_sim(packet);
+    }
+    else {
+      printf("CloudIOTManagement: Unrecognized TOPIC field (value: %u) for the IoT Modem packet.\n", topic);
+      return;
+    }
+  }
+  else if (flow == ModemPacket::Flow::CARRIER_SWITCH) {
+    if (topic == CarrierSwitchPacket::Topic::PERFORM) {
+      /* Confirm we have an expected number of bytes, and gracefully handle if not (return early). */
+      if (packet_size != CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES) {
+        printf("CloudIOTManagement: Although the Modem packet's flow and topic field indicated a Carrier Switch Perform packet, the determined packet size in bytes was unexpected (got %lu, but expected %lu).\n", packet_size, CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES);
+        return;
+      }
+
+      /* Decode packet, and send to the SIM card (if there was no decoding errors). */
+      IoTStatusPacket packet;
+      if (decode_iot_status(&pdu_buffer[PDU_HEADER_SIZE_BYTES], packet)) {
+        printf("CloudIOTManagement: An error occured while decoding the IoT Status packet! Dropping packet/avoiding transmission to the SIM card...\n");
+        return;
+      }
+      send_to_sim(packet);
+    }
+    else if (topic == CarrierSwitchPacket::Topic::ACK) {
+      printf("CloudIOTManagement: Unexpectedly intercepted a Carrier Switch ACK packet which should not be sent to the SIM card. Dropping packet/avoiding transmission to the SIM card...\n");
+      return;
+    }
+    else {
+      printf("CloudIOTManagement: Unrecognized TOPIC field (value: %u) for the Carrier Switch Modem packet.\n", topic);
+      return;
+    }
+  }
+  else {
+    printf("CloudIOTManagement: Unrecognized FLOW field (value: %u) for the Modem packet.\n", flow);
+    return;
+  }
+}
+
+void CloudIoTManagement::send_to_sim(const ModemPacket &packet) {
+  assert(initialized);
+
+  if (debug) {
+    printf("Sending Modem packet to SIM card...\n");
+  }
+
   // TODO(hcassar): Implement.
 }
 
+bool CloudIoTManagement::decode_iot_data(const uint8_t *packet_buffer, IoTDataPacket &packet) {
+  assert(packet_buffer != nullptr);
 
+  if (debug) {
+    printf("Decoding IoT Data packet...\n");
+  }
 
+  // TODO(hcassar): Implement.
+
+  // if (modem_packet->flow)
+  // result.flow = firstByte >> 4;
+  // result.topic = firstByte & 0x0F;
+
+  // // Copy payload into the struct
+  // size_t payloadSize = size - 1;
+  // payloadSize = (payloadSize > sizeof(result.payload)) ? sizeof(result.payload) : payloadSize;
+  // std::memcpy(result.payload, buffer + 1, payloadSize);
+
+  return false;
+}
+
+bool CloudIoTManagement::decode_iot_status(const uint8_t *packet_buffer, IoTStatusPacket &packet) {
+  assert(packet_buffer != nullptr);
+
+  if (debug) {
+    printf("Decoding IoT Status packet...\n");
+  }
+
+  // TODO(hcassar): Implement.
+  return false;
+}
+
+bool CloudIoTManagement::decode_carrier_switch_perform(const uint8_t *packet_buffer, CarrierSwitchPerformPacket &packet) {
+  assert(packet_buffer != nullptr);
+
+  if (debug) {
+    printf("Decoding Carrier Switch Perform packet...\n");
+  }
+
+  // TODO(hcassar): Implement.
+  return false;
+}
+
+bool CloudIoTManagement::decode_carrier_switch_ack(const uint8_t *packet_buffer, CarrierSwitchACKPacket &packet) {
+  assert(packet_buffer != nullptr);
+
+  if (debug) {
+    printf("Decoding Carrier Switch ACK packet...\n");
+  }
+
+  // TODO(hcassar): Implement.
+  return false;
+}
+
+/*****************************************************************************
+ * CloudIoTManagement - IoTDataPacket Class Definition
+ *****************************************************************************/
+
+void CloudIoTManagement::IoTDataPacket::serialize(uint8_t *output_buffer, size_t buffer_length) {
+  assert(buffer_length >= CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MAXIMUM);
+  // TODO(hcassar): Implement.
+}
+
+size_t CloudIoTManagement::IoTDataPacket::get_serialized_length() const {
+  return CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MAXIMUM;
+}
+
+/*****************************************************************************
+ * CloudIoTManagement - IoTStatusPacket Class Definition
+ *****************************************************************************/
+
+void CloudIoTManagement::IoTStatusPacket::serialize(uint8_t *output_buffer, size_t buffer_length) {
+  assert(buffer_length >= CLOUDIOTMANAGEMENT_IOT_STATUS_PACKET_SIZE_BYTES);
+  // TODO(hcassar): Implement.
+}
+
+size_t CloudIoTManagement::IoTStatusPacket::get_serialized_length() const {
+  return CLOUDIOTMANAGEMENT_IOT_STATUS_PACKET_SIZE_BYTES;
+}
+
+/*****************************************************************************
+ * CloudIoTManagement - CarrierSwitchPerformPacket Class Definition
+ *****************************************************************************/
+
+void CloudIoTManagement::CarrierSwitchPerformPacket::serialize(uint8_t *output_buffer, size_t buffer_length) {
+  assert(buffer_length >= CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES);
+  // TODO(hcassar): Implement.
+}
+
+size_t CloudIoTManagement::CarrierSwitchPerformPacket::get_serialized_length() const {
+  return CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES;
+}
+
+/*****************************************************************************
+ * CloudIoTManagement - CarrierSwitchACKPacket Class Definition
+ *****************************************************************************/
+
+void CloudIoTManagement::CarrierSwitchACKPacket::serialize(uint8_t *output_buffer, size_t buffer_length) {
+  assert(buffer_length >= CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES);
+  // TODO(hcassar): Implement.
+}
+
+size_t CloudIoTManagement::CarrierSwitchACKPacket::get_serialized_length() const {
+  return CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES;
+}
 
 } // namespace srsue
