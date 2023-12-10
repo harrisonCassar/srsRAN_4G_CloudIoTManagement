@@ -32,6 +32,7 @@
 #include "tft_packet_filter.h"
 #include <atomic>
 #include <cstdint>
+#include <cstring>
 #include <mutex>
 #include <net/if.h>
 #include <netinet/in.h>
@@ -118,6 +119,10 @@ private:
   tft_pdu_matcher tft_matcher;
 };
 
+// TODO(hcassar): Add abstract method to ModemPacket struct (perhaps for printing out to debug? or APDU format?).
+// TODO(hcassar): Move implementations over to CPP file.
+// TODO(hcassar): Consider adding implementations to a new file to be added in the build system.
+
 class CloudIoTManagement
 {
 public:
@@ -178,6 +183,12 @@ public:
     };
 
     /**
+     * @brief Constructor for ModemPacket.
+     */
+    ModemPacket() {}
+    ModemPacket(Flow _flow) : flow(_flow) {}
+
+    /**
      * @brief Virtual destructor to enable inheritance.
      */
     virtual ~ModemPacket() {}
@@ -198,6 +209,18 @@ public:
       DATA = 0x0,
       STATUS = 0x1
     };
+
+    /**
+     * @brief Constructor for IoTPacket.
+     */
+    IoTPacket() : ModemPacket(ModemPacket::Flow::IOT) {}
+    IoTPacket(Topic _topic) : topic(_topic),
+                              ModemPacket(ModemPacket::Flow::IOT) {}
+
+    /**
+     * @brief Virtual destructor to enable inheritance.
+     */
+    virtual ~IoTPacket() {}
 
     Topic topic : 4;  // 4 bits.
   };
@@ -227,6 +250,18 @@ public:
       INVALID = 0xF
     };
 
+    /**
+     * @brief Constructor for CarrierSwitchPacket.
+     */
+    CarrierSwitchPacket() : ModemPacket(ModemPacket::Flow::CARRIER_SWITCH) {}
+    CarrierSwitchPacket(Topic _topic) : topic(_topic),
+                                        ModemPacket(ModemPacket::Flow::CARRIER_SWITCH) {}
+
+    /**
+     * @brief Virtual destructor to enable inheritance.
+     */
+    virtual ~CarrierSwitchPacket() {}
+
     Topic topic : 4;  // 4 bits.
   };
 
@@ -236,6 +271,23 @@ public:
    */
   struct IoTDataPacket : IoTPacket {
   public:
+    /**
+     * @brief Constructor for IoTDataPacket.
+     */
+    IoTDataPacket() : IoTPacket(IoTPacket::Topic::DATA) {}
+    IoTDataPacket(uint32_t _device_id,
+                  uint64_t _timestamp,
+                  uint32_t _data_length,
+                  uint8_t *_data) : device_id(_device_id),
+                                    timestamp(_timestamp),
+                                    data_length(_data_length),
+                                    IoTPacket(IoTPacket::Topic::DATA) {
+                                      assert(_data_length <= CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_DATA_FIELD_SIZE_BYTES_MAXIMUM);
+
+                                      /* Copy data bytes over into IoTDataPacket-owned static array. */
+                                      std::memcpy(data, _data, _data_length);
+                                    }
+    
     uint32_t device_id;
     uint64_t timestamp;
     uint32_t data_length;
@@ -257,6 +309,13 @@ public:
       OFF_NOMINAL = 0x2
     };
 
+    /**
+     * @brief Constructor for IoTStatusPacket.
+     */
+    IoTStatusPacket() : IoTPacket(IoTPacket::Topic::STATUS) {}
+    IoTStatusPacket(Status _status) : status(_status),
+                                      IoTPacket(IoTPacket::Topic::STATUS) {}
+
     Status status : 4;  // 4 bits.
   };
 
@@ -275,6 +334,13 @@ public:
       OFF_NOMINAL = 0x2
     };
 
+    /**
+     * @brief Constructor for CarrierSwitchPerformPacket.
+     */
+    CarrierSwitchPerformPacket() : CarrierSwitchPacket(CarrierSwitchPacket::Topic::PERFORM) {}
+    CarrierSwitchPerformPacket(CarrierID _carrier_id) : carrier_id(_carrier_id),
+                                                        CarrierSwitchPacket(CarrierSwitchPacket::Topic::PERFORM) {}
+
     CarrierID carrier_id : 4; // 4 bits.
   };
 
@@ -291,6 +357,15 @@ public:
       ACK = 0x0,
       NACK = 0x1
     };
+
+    /**
+     * @brief Constructor for CarrierSwitchACKPacket.
+     */
+    CarrierSwitchACKPacket() : CarrierSwitchPacket(CarrierSwitchPacket::Topic::ACK) {}
+    CarrierSwitchACKPacket(Status _status,
+                           CarrierID _carrier_id) : status(_status),
+                                                    carrier_id(_carrier_id),
+                                                    CarrierSwitchPacket(CarrierSwitchPacket::Topic::ACK) {}
 
     Status status : 4;  // 4 bits.
     CarrierID carrier_id : 4; // 4 bits.
@@ -472,10 +547,6 @@ private:
     }
 
     // TODO(hcassar): Implement.
-    // TODO(hcassar): Add `flow` and `topic` initialization into the IoTDataPacket initializer list.
-    // TODO(hcassar): Add abstract method to ModemPacket struct (perhaps for printing out to debug? or APDU format?).
-    // TODO(hcassar): Move implementations over to CPP file.
-    // TODO(hcassar): Consider adding implementations to a new file to be added in the build system.
 
     // if (modem_packet->flow)
     // result.flow = firstByte >> 4;
