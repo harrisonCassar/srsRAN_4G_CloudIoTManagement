@@ -291,7 +291,7 @@ public:
                                       /* Copy data bytes over into IoTDataPacket-owned static array. */
                                       std::memcpy(data, _data, _data_length);
                                     }
-    
+
     /**
      * @brief Serializes the packet into a sequence of bytes, placing these
      * bytes into the specified buffer owned by the caller.
