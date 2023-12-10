@@ -189,6 +189,24 @@ public:
     ModemPacket(Flow _flow) : flow(_flow) {}
 
     /**
+     * @brief Serializes the packet into a sequence of bytes, placing these
+     * bytes into the specified buffer owned by the caller.
+     *
+     * NOTE: This buffer must be at LEAST the length required for the packet of
+     * interest, which can be determined by the `get_serialized_length` method.
+     *
+     * @param output_buffer Buffer to hold serialized bytes.
+     * @param buffer_length Size of the specified buffer to hold serialized bytes.
+     */
+    virtual void serialize(uint8_t *output_buffer, size_t buffer_length) = 0;
+
+    /**
+     * @brief Specifies the length of the serialized packet, which can be used
+     * to properly size buffers accordingly.
+     */
+    virtual size_t get_serialized_length() const = 0;
+
+    /**
      * @brief Virtual destructor to enable inheritance.
      */
     virtual ~ModemPacket() {}
@@ -269,7 +287,7 @@ public:
    * @brief Structure representing the IoT Data Modem packet used in the custom
    * CloudIoTManagement protocol.
    */
-  struct IoTDataPacket : IoTPacket {
+  struct IoTDataPacket final : IoTPacket {
   public:
     /**
      * @brief Constructor for IoTDataPacket.
@@ -288,6 +306,29 @@ public:
                                       std::memcpy(data, _data, _data_length);
                                     }
     
+    /**
+     * @brief Serializes the packet into a sequence of bytes, placing these
+     * bytes into the specified buffer owned by the caller.
+     *
+     * NOTE: This buffer must be at LEAST the length required for the packet of
+     * interest, which can be determined by the `get_serialized_length` method.
+     *
+     * @param output_buffer Buffer to hold serialized bytes.
+     * @param buffer_length Size of the specified buffer to hold serialized bytes.
+     */
+    virtual void serialize(uint8_t *output_buffer, size_t buffer_length) override {
+      assert(buffer_length >= CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MAXIMUM);
+      // TODO(hcassar): Implement.
+    }
+
+    /**
+     * @brief Specifies the length of the serialized packet, which can be used
+     * to properly size buffers accordingly.
+     */
+    virtual size_t get_serialized_length() const override {
+      return CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MAXIMUM;
+    };
+
     uint32_t device_id;
     uint64_t timestamp;
     uint32_t data_length;
@@ -298,7 +339,7 @@ public:
    * @brief Structure representing the IoT Status Modem packet used in the
    * custom CloudIoTManagement protocol.
    */
-  struct IoTStatusPacket : IoTPacket {
+  struct IoTStatusPacket final : IoTPacket {
   public:
     /**
      * @brief Enum for Status field in IoT Status Modem packet.
@@ -316,6 +357,29 @@ public:
     IoTStatusPacket(Status _status) : status(_status),
                                       IoTPacket(IoTPacket::Topic::STATUS) {}
 
+    /**
+     * @brief Serializes the packet into a sequence of bytes, placing these
+     * bytes into the specified buffer owned by the caller.
+     *
+     * NOTE: This buffer must be at LEAST the length required for the packet of
+     * interest, which can be determined by the `get_serialized_length` method.
+     *
+     * @param output_buffer Buffer to hold serialized bytes.
+     * @param buffer_length Size of the specified buffer to hold serialized bytes.
+     */
+    virtual void serialize(uint8_t *output_buffer, size_t buffer_length) override {
+      assert(buffer_length >= CLOUDIOTMANAGEMENT_IOT_STATUS_PACKET_SIZE_BYTES);
+      // TODO(hcassar): Implement.
+    }
+
+    /**
+     * @brief Specifies the length of the serialized packet, which can be used
+     * to properly size buffers accordingly.
+     */
+    virtual size_t get_serialized_length() const override {
+      return CLOUDIOTMANAGEMENT_IOT_STATUS_PACKET_SIZE_BYTES;
+    };
+
     Status status;
   };
 
@@ -323,7 +387,7 @@ public:
    * @brief Structure representing the Carrier Switch Perform Modem packet used
    * in the custom CloudIoTManagement protocol.
    */
-  struct CarrierSwitchPerformPacket : CarrierSwitchPacket {
+  struct CarrierSwitchPerformPacket final : CarrierSwitchPacket {
   public:
     /**
      * @brief Enum for Status field in IoT Status Modem packet.
@@ -341,6 +405,29 @@ public:
     CarrierSwitchPerformPacket(CarrierID _carrier_id) : carrier_id(_carrier_id),
                                                         CarrierSwitchPacket(CarrierSwitchPacket::Topic::PERFORM) {}
 
+    /**
+     * @brief Serializes the packet into a sequence of bytes, placing these
+     * bytes into the specified buffer owned by the caller.
+     *
+     * NOTE: This buffer must be at LEAST the length required for the packet of
+     * interest, which can be determined by the `get_serialized_length` method.
+     *
+     * @param output_buffer Buffer to hold serialized bytes.
+     * @param buffer_length Size of the specified buffer to hold serialized bytes.
+     */
+    virtual void serialize(uint8_t *output_buffer, size_t buffer_length) override {
+      assert(buffer_length >= CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES);
+      // TODO(hcassar): Implement.
+    }
+
+    /**
+     * @brief Specifies the length of the serialized packet, which can be used
+     * to properly size buffers accordingly.
+     */
+    virtual size_t get_serialized_length() const override {
+      return CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES;
+    };
+
     CarrierID carrier_id;
   };
 
@@ -348,7 +435,7 @@ public:
    * @brief Structure representing the Carrier Switch ACK Modem packet used in
    * the custom CloudIoTManagement protocol.
    */
-  struct CarrierSwitchACKPacket : CarrierSwitchPacket {
+  struct CarrierSwitchACKPacket final : CarrierSwitchPacket {
   public:
     /**
      * @brief Enum for Status field in Carrier Switch ACK Modem packet.
@@ -366,6 +453,29 @@ public:
                            CarrierID _carrier_id) : status(_status),
                                                     carrier_id(_carrier_id),
                                                     CarrierSwitchPacket(CarrierSwitchPacket::Topic::ACK) {}
+
+    /**
+     * @brief Serializes the packet into a sequence of bytes, placing these
+     * bytes into the specified buffer owned by the caller.
+     *
+     * NOTE: This buffer must be at LEAST the length required for the packet of
+     * interest, which can be determined by the `get_serialized_length` method.
+     *
+     * @param output_buffer Buffer to hold serialized bytes.
+     * @param buffer_length Size of the specified buffer to hold serialized bytes.
+     */
+    virtual void serialize(uint8_t *output_buffer, size_t buffer_length) override {
+      assert(buffer_length >= CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES);
+      // TODO(hcassar): Implement.
+    }
+
+    /**
+     * @brief Specifies the length of the serialized packet, which can be used
+     * to properly size buffers accordingly.
+     */
+    virtual size_t get_serialized_length() const override {
+      return CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES;
+    };
 
     Status status;
     CarrierID carrier_id;
