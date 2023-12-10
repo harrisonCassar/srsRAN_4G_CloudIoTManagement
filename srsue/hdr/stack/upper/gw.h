@@ -130,43 +130,43 @@ public:
   /**
    * @brief Pre-determined length of PDU message header.
    */
-  static constexpr int PDU_HEADER_SIZE_BYTES = 28;
+  static constexpr size_t PDU_HEADER_SIZE_BYTES = 28;
 
   /**
    * @brief Pre-determined (minimum) length of an IoT Data Modem packet, as
    * defined in the custom CloudIoTManagement protocol.
    */
-  static constexpr int CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MINIMUM = 14;
+  static constexpr size_t CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MINIMUM = 14;
 
   /**
    * @brief Pre-determined (maximum) length of the data field in an IoT Data
    * Modem packet, as defined in the custom CloudIoTManagement protocol.
    */
-  static constexpr int CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_DATA_FIELD_SIZE_BYTES_MAXIMUM = 32;
+  static constexpr size_t CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_DATA_FIELD_SIZE_BYTES_MAXIMUM = 32;
 
   /**
    * @brief Pre-determined (maximum) length of an IoT Data Modem packet, as
    * defined in the custom CloudIoTManagement protocol.
    */
-  static constexpr int CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MAXIMUM = CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MINIMUM + CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_DATA_FIELD_SIZE_BYTES_MAXIMUM;
+  static constexpr size_t CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MAXIMUM = CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MINIMUM + CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_DATA_FIELD_SIZE_BYTES_MAXIMUM;
 
   /**
    * @brief Pre-determined length of an IoT Status Modem packet, as defined in
    * the custom CloudIoTManagement protocol.
    */
-  static constexpr int CLOUDIOTMANAGEMENT_IOT_STATUS_PACKET_SIZE_BYTES = 2;
+  static constexpr size_t CLOUDIOTMANAGEMENT_IOT_STATUS_PACKET_SIZE_BYTES = 2;
 
   /**
    * @brief Pre-determined length of an Carrier Switch Perform Modem packet, as
    * defined in the custom CloudIoTManagement protocol.
    */
-  static constexpr int CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES = 2;
+  static constexpr size_t CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES = 2;
 
   /**
    * @brief Pre-determined length of an Carrier Switch Ack Modem packet, as
    * defined in the custom CloudIoTManagement protocol.
    */
-  static constexpr int CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES = 2;
+  static constexpr size_t CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES = 2;
 
   /**
    * @brief Structure representing the Modem packet used in the custom
@@ -193,7 +193,7 @@ public:
      */
     virtual ~ModemPacket() {}
 
-    Flow flow : 4;  // 4 bits.
+    Flow flow;
   };
 
   /**
@@ -222,7 +222,7 @@ public:
      */
     virtual ~IoTPacket() {}
 
-    Topic topic : 4;  // 4 bits.
+    Topic topic;
   };
 
   /**
@@ -262,7 +262,7 @@ public:
      */
     virtual ~CarrierSwitchPacket() {}
 
-    Topic topic : 4;  // 4 bits.
+    Topic topic;
   };
 
   /**
@@ -316,7 +316,7 @@ public:
     IoTStatusPacket(Status _status) : status(_status),
                                       IoTPacket(IoTPacket::Topic::STATUS) {}
 
-    Status status : 4;  // 4 bits.
+    Status status;
   };
 
   /**
@@ -341,7 +341,7 @@ public:
     CarrierSwitchPerformPacket(CarrierID _carrier_id) : carrier_id(_carrier_id),
                                                         CarrierSwitchPacket(CarrierSwitchPacket::Topic::PERFORM) {}
 
-    CarrierID carrier_id : 4; // 4 bits.
+    CarrierID carrier_id;
   };
 
   /**
@@ -367,8 +367,8 @@ public:
                                                     carrier_id(_carrier_id),
                                                     CarrierSwitchPacket(CarrierSwitchPacket::Topic::ACK) {}
 
-    Status status : 4;  // 4 bits.
-    CarrierID carrier_id : 4; // 4 bits.
+    Status status;
+    CarrierID carrier_id;
   };
 
   /**
@@ -435,21 +435,21 @@ public:
     size_t packet_size = num_bytes - PDU_HEADER_SIZE_BYTES;
 
     /* Determine Modem Packet type, and then handle each accordingly (decode and send). */
-    uint8_t flow = packet_buffer[0] & 0xF0;
-    uint8_t topic = packet_buffer[0] & 0x0F;
+    uint8_t flow = pdu_buffer[PDU_HEADER_SIZE_BYTES] & 0xF0;
+    uint8_t topic = pdu_buffer[PDU_HEADER_SIZE_BYTES] & 0x0F;
 
     if (flow == ModemPacket::Flow::IOT) {
       if (topic == IoTPacket::Topic::DATA) {
         /* Confirm we have an expected number of bytes, and gracefully handle if not (return early). */
         if (packet_size < CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MINIMUM ||
             packet_size > CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MAXIMUM) {
-          printf("CloudIOTManagement: Although the Modem packet's flow and topic field indicated an IoT Data packet, the determined packet size in bytes was unexpected (got %u, but expected at least %u and at most %u).\n", packet_size, CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MINIMUM, CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MAXIMUM);
+          printf("CloudIOTManagement: Although the Modem packet's flow and topic field indicated an IoT Data packet, the determined packet size in bytes was unexpected (got %lu, but expected at least %lu and at most %lu).\n", packet_size, CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MINIMUM, CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MAXIMUM);
           return;
         }
 
         /* Decode packet, and send to the SIM card (if there was no decoding errors). */
         IoTDataPacket packet;
-        if (decode_iot_data(&pdu_buffer[28], packet)) {
+        if (decode_iot_data(&pdu_buffer[PDU_HEADER_SIZE_BYTES], packet)) {
           printf("CloudIOTManagement: An error occured while decoding the IoT Data packet! Dropping packet/avoiding transmission to the SIM card...\n");
           return;
         }
@@ -458,13 +458,13 @@ public:
       else if (topic == IoTPacket::Topic::STATUS) {
         /* Confirm we have an expected number of bytes, and gracefully handle if not (return early). */
         if (packet_size != CLOUDIOTMANAGEMENT_IOT_STATUS_PACKET_SIZE_BYTES) {
-          printf("CloudIOTManagement: Although the Modem packet's flow and topic field indicated an IoT Status packet, the determined packet size in bytes was unexpected (got %u, but expected %u).\n", packet_size, CLOUDIOTMANAGEMENT_IOT_STATUS_PACKET_SIZE_BYTES);
+          printf("CloudIOTManagement: Although the Modem packet's flow and topic field indicated an IoT Status packet, the determined packet size in bytes was unexpected (got %lu, but expected %lu).\n", packet_size, CLOUDIOTMANAGEMENT_IOT_STATUS_PACKET_SIZE_BYTES);
           return;
         }
 
         /* Decode packet, and send to the SIM card (if there was no decoding errors). */
         IoTStatusPacket packet;
-        if (decode_iot_status(&pdu_buffer[28], packet)) {
+        if (decode_iot_status(&pdu_buffer[PDU_HEADER_SIZE_BYTES], packet)) {
           printf("CloudIOTManagement: An error occured while decoding the IoT Status packet! Dropping packet/avoiding transmission to the SIM card...\n");
           return;
         }
@@ -479,13 +479,13 @@ public:
       if (topic == CarrierSwitchPacket::Topic::PERFORM) {
         /* Confirm we have an expected number of bytes, and gracefully handle if not (return early). */
         if (packet_size != CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES) {
-          printf("CloudIOTManagement: Although the Modem packet's flow and topic field indicated a Carrier Switch Perform packet, the determined packet size in bytes was unexpected (got %u, but expected %u).\n", packet_size, CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES);
+          printf("CloudIOTManagement: Although the Modem packet's flow and topic field indicated a Carrier Switch Perform packet, the determined packet size in bytes was unexpected (got %lu, but expected %lu).\n", packet_size, CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES);
           return;
         }
 
         /* Decode packet, and send to the SIM card (if there was no decoding errors). */
         IoTStatusPacket packet;
-        if (decode_iot_status(&pdu_buffer[28], packet)) {
+        if (decode_iot_status(&pdu_buffer[PDU_HEADER_SIZE_BYTES], packet)) {
           printf("CloudIOTManagement: An error occured while decoding the IoT Status packet! Dropping packet/avoiding transmission to the SIM card...\n");
           return;
         }
