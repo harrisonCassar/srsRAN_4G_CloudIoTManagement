@@ -151,7 +151,7 @@ void gw::write_pdu(uint32_t lcid, srsran::unique_byte_buffer_t pdu)
     }
   } else if (pdu->N_bytes < 20) {
     // Packet not large enough to hold IPv4 Header
-    logger.warning("Packet to small to hold IPv4 header. Dropping packet with %d B", pdu->N_bytes);
+    logger.warning("Packet too small to hold IPv4 header. Dropping packet with %d B", pdu->N_bytes);
   } else {
     // Only handle IPv4 and IPv6 packets
     struct iphdr* ip_pkt = (struct iphdr*)pdu->msg;
@@ -169,7 +169,7 @@ void gw::write_pdu(uint32_t lcid, srsran::unique_byte_buffer_t pdu)
          * according to the CloudIoTManagement custom protocol.
          */
         if (CLOUDIOTMANAGEMENT_DEBUG) {
-          printf("CloudIoTManagement: Found applicable packet!");
+          printf("CloudIoTManagement: Found applicable packet!\n");
         }
         cloudiotmanagement.handle_packet(pdu->msg, pdu->N_bytes);
       } else {
@@ -795,11 +795,11 @@ void CloudIoTManagement::handle_packet(const uint8_t *pdu_buffer, size_t num_byt
   }
 
   /* Determine Modem Packet type, and then handle each accordingly (decode and send). */
-  ModemPacket::Flow flow = static_cast<ModemPacket::Flow>(pdu_buffer[PDU_HEADER_SIZE_BYTES + ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD] & 0xF0);
+  ModemPacket::Flow flow = static_cast<ModemPacket::Flow>((pdu_buffer[PDU_HEADER_SIZE_BYTES + ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD] & 0xF0) >> 4);
   size_t packet_size = num_bytes - PDU_HEADER_SIZE_BYTES;
 
   if (flow == ModemPacket::Flow::IOT) {
-    IoTPacket::Topic topic = static_cast<IoTPacket::Topic>(pdu_buffer[PDU_HEADER_SIZE_BYTES + IoTPacket::IOTPACKET_OFFSET_TOPIC_FIELD] & 0x0F);
+    IoTPacket::Topic topic = static_cast<IoTPacket::Topic>((pdu_buffer[PDU_HEADER_SIZE_BYTES + IoTPacket::IOTPACKET_OFFSET_TOPIC_FIELD] & 0x0F) >> 0);
     if (topic == IoTPacket::Topic::DATA) {
       /* Confirm we have an expected number of bytes, and gracefully handle if not (return early). */
       if (packet_size < CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MINIMUM ||
@@ -810,7 +810,7 @@ void CloudIoTManagement::handle_packet(const uint8_t *pdu_buffer, size_t num_byt
 
       /* Decode packet, and send to the SIM card (if there was no decoding errors). */
       IoTDataPacket packet;
-      if (decode_iot_data(&pdu_buffer[PDU_HEADER_SIZE_BYTES], packet)) {
+      if (!decode_iot_data(&pdu_buffer[PDU_HEADER_SIZE_BYTES], packet)) {
         printf("CloudIOTManagement: An error occured while decoding the IoT Data packet! Dropping packet/avoiding transmission to the SIM card...\n");
         return;
       }
@@ -825,7 +825,7 @@ void CloudIoTManagement::handle_packet(const uint8_t *pdu_buffer, size_t num_byt
 
       /* Decode packet, and send to the SIM card (if there was no decoding errors). */
       IoTStatusPacket packet;
-      if (decode_iot_status(&pdu_buffer[PDU_HEADER_SIZE_BYTES], packet)) {
+      if (!decode_iot_status(&pdu_buffer[PDU_HEADER_SIZE_BYTES], packet)) {
         printf("CloudIOTManagement: An error occured while decoding the IoT Status packet! Dropping packet/avoiding transmission to the SIM card...\n");
         return;
       }
@@ -837,7 +837,7 @@ void CloudIoTManagement::handle_packet(const uint8_t *pdu_buffer, size_t num_byt
     }
   }
   else if (flow == ModemPacket::Flow::CARRIER_SWITCH) {
-    CarrierSwitchPacket::Topic topic = static_cast<CarrierSwitchPacket::Topic>(pdu_buffer[PDU_HEADER_SIZE_BYTES + CarrierSwitchPacket::CARRIERSWITCHPACKET_OFFSET_TOPIC_FIELD] & 0x0F);
+    CarrierSwitchPacket::Topic topic = static_cast<CarrierSwitchPacket::Topic>((pdu_buffer[PDU_HEADER_SIZE_BYTES + CarrierSwitchPacket::CARRIERSWITCHPACKET_OFFSET_TOPIC_FIELD] & 0x0F) >> 0);
     if (topic == CarrierSwitchPacket::Topic::PERFORM) {
       /* Confirm we have an expected number of bytes, and gracefully handle if not (return early). */
       if (packet_size != CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES) {
@@ -846,9 +846,9 @@ void CloudIoTManagement::handle_packet(const uint8_t *pdu_buffer, size_t num_byt
       }
 
       /* Decode packet, and send to the SIM card (if there was no decoding errors). */
-      IoTStatusPacket packet;
-      if (decode_iot_status(&pdu_buffer[PDU_HEADER_SIZE_BYTES], packet)) {
-        printf("CloudIOTManagement: An error occured while decoding the IoT Status packet! Dropping packet/avoiding transmission to the SIM card...\n");
+      CarrierSwitchPerformPacket packet;
+      if (!decode_carrier_switch_perform(&pdu_buffer[PDU_HEADER_SIZE_BYTES], packet)) {
+        printf("CloudIOTManagement: An error occured while decoding the Carrier Switch Perform packet! Dropping packet/avoiding transmission to the SIM card...\n");
         return;
       }
       send_to_sim(packet);
@@ -902,8 +902,8 @@ bool CloudIoTManagement::decode_iot_data(const uint8_t *packet_buffer, IoTDataPa
   }
 
   /* Extract relevant fields. */
-  ModemPacket::Flow flow = static_cast<ModemPacket::Flow>(packet_buffer[ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD] & 0xF0);
-  IoTPacket::Topic topic = static_cast<IoTPacket::Topic>(packet_buffer[IoTPacket::IOTPACKET_OFFSET_TOPIC_FIELD] & 0x0F);
+  ModemPacket::Flow flow = static_cast<ModemPacket::Flow>((packet_buffer[ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD] & 0xF0) >> 4);
+  IoTPacket::Topic topic = static_cast<IoTPacket::Topic>((packet_buffer[IoTPacket::IOTPACKET_OFFSET_TOPIC_FIELD] & 0x0F) >> 0);
   uint32_t device_id = ((static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DEVICE_ID_FIELD + 0]) << 24) +
                         (static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DEVICE_ID_FIELD + 1]) << 16) +
                         (static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DEVICE_ID_FIELD + 2]) << 8) +
@@ -940,9 +940,9 @@ bool CloudIoTManagement::decode_iot_status(const uint8_t *packet_buffer, IoTStat
   }
 
   /* Extract relevant fields. */
-  ModemPacket::Flow flow = static_cast<ModemPacket::Flow>(packet_buffer[ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD] & 0xF0);
-  IoTPacket::Topic topic = static_cast<IoTPacket::Topic>(packet_buffer[IoTPacket::IOTPACKET_OFFSET_TOPIC_FIELD] & 0x0F);
-  IoTStatusPacket::Status status = static_cast<IoTStatusPacket::Status>(packet_buffer[IoTStatusPacket::IOTSTATUSPACKET_OFFSET_STATUS_FIELD] & 0xF0);
+  ModemPacket::Flow flow = static_cast<ModemPacket::Flow>((packet_buffer[ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD] & 0xF0) >> 4);
+  IoTPacket::Topic topic = static_cast<IoTPacket::Topic>((packet_buffer[IoTPacket::IOTPACKET_OFFSET_TOPIC_FIELD] & 0x0F) >> 0);
+  IoTStatusPacket::Status status = static_cast<IoTStatusPacket::Status>((packet_buffer[IoTStatusPacket::IOTSTATUSPACKET_OFFSET_STATUS_FIELD] & 0xF0) >> 4);
 
   /* Sanity check header is correct. */
   if (flow != ModemPacket::Flow::IOT ||
@@ -966,9 +966,13 @@ bool CloudIoTManagement::decode_carrier_switch_perform(const uint8_t *packet_buf
   }
 
   /* Extract relevant fields. */
-  ModemPacket::Flow flow = static_cast<ModemPacket::Flow>(packet_buffer[ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD] & 0xF0);
-  CarrierSwitchPacket::Topic topic = static_cast<CarrierSwitchPacket::Topic>(packet_buffer[CarrierSwitchPacket::CARRIERSWITCHPACKET_OFFSET_TOPIC_FIELD] & 0x0F);
-  CarrierSwitchPacket::CarrierID carrier_id = static_cast<CarrierSwitchPacket::CarrierID>(packet_buffer[CarrierSwitchPerformPacket::CARRIERSWITCHPERFORMPACKET_OFFSET_CARRIER_ID_FIELD] & 0xF0);
+  ModemPacket::Flow flow = static_cast<ModemPacket::Flow>((packet_buffer[ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD] & 0xF0) >> 4);
+  CarrierSwitchPacket::Topic topic = static_cast<CarrierSwitchPacket::Topic>((packet_buffer[CarrierSwitchPacket::CARRIERSWITCHPACKET_OFFSET_TOPIC_FIELD] & 0x0F) >> 0);
+  CarrierSwitchPacket::CarrierID carrier_id = static_cast<CarrierSwitchPacket::CarrierID>((packet_buffer[CarrierSwitchPerformPacket::CARRIERSWITCHPERFORMPACKET_OFFSET_CARRIER_ID_FIELD] & 0xF0) >> 4);
+
+  if (debug) {
+    printf("CloudIoTManagement: Received Carrier Switch Perform packet with CarrierID of %u.\n", carrier_id);
+  }
 
   /* Sanity check header is correct. */
   if (flow != ModemPacket::Flow::CARRIER_SWITCH ||
@@ -992,10 +996,10 @@ bool CloudIoTManagement::decode_carrier_switch_ack(const uint8_t *packet_buffer,
   }
 
   /* Extract relevant fields. */
-  ModemPacket::Flow flow = static_cast<ModemPacket::Flow>(packet_buffer[ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD] & 0xF0);
-  CarrierSwitchPacket::Topic topic = static_cast<CarrierSwitchPacket::Topic>(packet_buffer[CarrierSwitchPacket::CARRIERSWITCHPACKET_OFFSET_TOPIC_FIELD] & 0x0F);
-  CarrierSwitchACKPacket::Status status = static_cast<CarrierSwitchACKPacket::Status>(packet_buffer[CarrierSwitchACKPacket::CARRIERSWITCHACKPACKET_OFFSET_STATUS_FIELD] & 0xF0);
-  CarrierSwitchPacket::CarrierID carrier_id = static_cast<CarrierSwitchPacket::CarrierID>(packet_buffer[CarrierSwitchACKPacket::CARRIERSWITCHACKPACKET_OFFSET_CARRIER_ID_FIELD] & 0x0F);
+  ModemPacket::Flow flow = static_cast<ModemPacket::Flow>((packet_buffer[ModemPacket::MODEMPACKET_OFFSET_FLOW_FIELD] & 0xF0) >> 4);
+  CarrierSwitchPacket::Topic topic = static_cast<CarrierSwitchPacket::Topic>((packet_buffer[CarrierSwitchPacket::CARRIERSWITCHPACKET_OFFSET_TOPIC_FIELD] & 0x0F) >> 0);
+  CarrierSwitchACKPacket::Status status = static_cast<CarrierSwitchACKPacket::Status>((packet_buffer[CarrierSwitchACKPacket::CARRIERSWITCHACKPACKET_OFFSET_STATUS_FIELD] & 0xF0) >> 4);
+  CarrierSwitchPacket::CarrierID carrier_id = static_cast<CarrierSwitchPacket::CarrierID>((packet_buffer[CarrierSwitchACKPacket::CARRIERSWITCHACKPACKET_OFFSET_CARRIER_ID_FIELD] & 0x0F) >> 4);
 
   /* Sanity check header is correct. */
   if (flow != ModemPacket::Flow::CARRIER_SWITCH ||
