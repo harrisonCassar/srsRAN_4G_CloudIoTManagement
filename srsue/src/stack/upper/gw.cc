@@ -38,6 +38,10 @@
 
 namespace srsue {
 
+/*****************************************************************************
+ * gw Class Definition
+ *****************************************************************************/
+
 gw::gw(srslog::basic_logger& logger_) : thread("GW"), logger(logger_), tft_matcher(logger) {}
 
 int gw::init(const gw_args_t& args_, stack_interface_gw* stack_)
@@ -130,9 +134,9 @@ void gw::get_metrics(gw_metrics_t& m, const uint32_t nof_tti)
   ul_tput_bytes = 0;
 }
 
-/*******************************************************************************
-  PDCP interface
-*******************************************************************************/
+/*****************************************************************************
+ * gw - PDCP Interface
+ *****************************************************************************/
 void gw::write_pdu(uint32_t lcid, srsran::unique_byte_buffer_t pdu)
 {
   logger.info(pdu->msg, pdu->N_bytes, "RX PDU. Stack latency: %ld us", pdu->get_latency_us().count());
@@ -151,9 +155,50 @@ void gw::write_pdu(uint32_t lcid, srsran::unique_byte_buffer_t pdu)
     // Only handle IPv4 and IPv6 packets
     struct iphdr* ip_pkt = (struct iphdr*)pdu->msg;
     if (ip_pkt->version == 4 || ip_pkt->version == 6) {
-      int n = write(tun_fd, pdu->msg, pdu->N_bytes);
-      if (n > 0 && (pdu->N_bytes != (uint32_t)n)) {
-        logger.warning("DL TUN/TAP write failure. Wanted to write %d B but only wrote %d B.", pdu->N_bytes, n);
+      unsigned char tmp = ip_pkt->version;
+      printf("CloudIOTManagement: write_pdu with packet %u; ihl: %u; tot_len: %u; pdu->N_bytes: %u\n", tmp, ip_pkt->ihl, ip_pkt->tot_len, pdu->N_bytes);
+      uint16_t destination_port = (pdu->msg[22] << 8) +
+                                  (pdu->msg[23] << 0);
+      printf("CloudIOTManagement: destination port: %u\n", destination_port);
+      if (destination_port == 6002) {
+        /* Process/decode packet that is meant for our application. */
+        
+        printf("Version, IHL: %u\n", pdu->msg[0]);
+        printf("TOS: %u\n", pdu->msg[1]);
+        printf("Total Length: %u\n", (pdu->msg[2] << 8) +
+                                     (pdu->msg[3] << 0));
+        printf("ID: %u\n", (pdu->msg[4] << 8) +
+                           (pdu->msg[5] << 0));
+        printf("Fragment Offset: %u\n", (pdu->msg[6] << 8) +
+                                        (pdu->msg[7] << 0));
+        printf("TTL: %u\n", pdu->msg[8]);
+        printf("Protocol: %u\n", pdu->msg[9]);
+        printf("Header Checksum: %u\n", (pdu->msg[10] << 8) +
+                                        (pdu->msg[11] << 0));
+        printf("Source IP address: %u.%u.%u.%u\n", pdu->msg[12], pdu->msg[13], pdu->msg[14], pdu->msg[15]);
+        printf("Destination IP address: %u.%u.%u.%u\n", pdu->msg[16], pdu->msg[17], pdu->msg[18], pdu->msg[19]);
+        printf("Source Port: %u\n", (pdu->msg[20] << 8) +
+                                    (pdu->msg[21] << 0));
+        printf("Destination Port: %u\n", (pdu->msg[22] << 8) +
+                                         (pdu->msg[23] << 0));
+        printf("UDP Length: %u\n", (pdu->msg[24] << 8) +
+                                   (pdu->msg[25] << 0));
+        printf("UDP Checksum: %u\n", (pdu->msg[26] << 8) +
+                                     (pdu->msg[27] << 0));
+        printf("Payload: ");
+        for (size_t i = 28; i < pdu->N_bytes; i++)
+          printf("%u ", pdu->msg[i]);
+        printf("\n");
+
+        // ...decode our protocol here...
+
+        /* . */
+        
+      } else {
+        int n = write(tun_fd, pdu->msg, pdu->N_bytes);
+        if (n > 0 && (pdu->N_bytes != (uint32_t)n)) {
+          logger.warning("DL TUN/TAP write failure. Wanted to write %d B but only wrote %d B.", pdu->N_bytes, n);
+        }
       }
     } else {
       logger.error("Unsupported IP version. Dropping packet with %d B", pdu->N_bytes);
@@ -185,6 +230,9 @@ void gw::write_pdu_mch(uint32_t lcid, srsran::unique_byte_buffer_t pdu)
         logger.warning("TUN/TAP not up - dropping gw RX message");
       }
     } else {
+      struct iphdr* ip_pkt = (struct iphdr*)pdu->msg;
+      unsigned char tmp = ip_pkt->version;
+      printf("harrison: write_pdu_mch with packet %d; ihl: %d; tot_len: %d\n", tmp, ip_pkt->ihl, ip_pkt->tot_len);
       int n = write(tun_fd, pdu->msg, pdu->N_bytes);
       if (n > 0 && (pdu->N_bytes != (uint32_t)n)) {
         logger.warning("DL TUN/TAP write failure");
@@ -193,9 +241,9 @@ void gw::write_pdu_mch(uint32_t lcid, srsran::unique_byte_buffer_t pdu)
   }
 }
 
-/*******************************************************************************
-  NAS interface
-*******************************************************************************/
+/*****************************************************************************
+ * gw - NAS Interface
+ *****************************************************************************/
 int gw::setup_if_addr(uint32_t eps_bearer_id, uint8_t pdn_type, uint32_t ip_addr, uint8_t* ipv6_if_addr, char* err_str)
 {
   int err;
@@ -259,9 +307,9 @@ void gw::set_test_loop_mode(const test_loop_mode_state_t mode, const uint32_t ip
   logger.error("UE test loop mode not supported");
 }
 
-/*******************************************************************************
-  RRC interface
-*******************************************************************************/
+/*****************************************************************************
+ * gw - RRC Interface
+ *****************************************************************************/
 void gw::add_mch_port(uint32_t lcid, uint32_t port)
 {
   if (lcid > 0 && lcid < SRSRAN_N_MCH_LCIDS) {
@@ -269,9 +317,9 @@ void gw::add_mch_port(uint32_t lcid, uint32_t port)
   }
 }
 
-/********************/
-/*    GW Receive    */
-/********************/
+/*****************************************************************************
+ * gw - GW Receive
+ *****************************************************************************/
 void gw::run_thread()
 {
   uint32 idx     = 0;
@@ -393,9 +441,9 @@ void gw::run_thread()
   logger.info("GW IP receiver thread exiting.");
 }
 
-/**************************/
-/* TUN Interface Helpers  */
-/**************************/
+/*****************************************************************************
+ * gw - TUN Interface Helpers
+ *****************************************************************************/
 int gw::init_if(char* err_str)
 {
   if (if_up) {
@@ -728,4 +776,25 @@ out:
     close(fd);
   }
 }
+
+/*****************************************************************************
+ * CloudIoTManagement Class Definition
+ *****************************************************************************/
+
+int CloudIoTManagement::init() {
+  assert(!initialized);
+
+  // TODO(hcassar): Implement (add connection to SIM card here).
+
+  /* Mark that we've now been initialized. */
+  initialized = true;
+}
+
+bool CloudIoTManagement::contains_applicable_packet(uint8_t *packet, int num_bytes) {
+  // TODO(hcassar): Implement.
+}
+
+
+
+
 } // namespace srsue

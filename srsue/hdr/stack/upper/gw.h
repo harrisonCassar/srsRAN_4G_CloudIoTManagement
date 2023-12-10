@@ -31,6 +31,7 @@
 #include "srsran/srslog/srslog.h"
 #include "tft_packet_filter.h"
 #include <atomic>
+#include <cstdint>
 #include <mutex>
 #include <net/if.h>
 #include <netinet/in.h>
@@ -115,6 +116,462 @@ private:
 
   // TFT
   tft_pdu_matcher tft_matcher;
+};
+
+class CloudIoTManagement
+{
+public:
+
+  /**
+   * @brief Pre-determined length of PDU message header.
+   */
+  static constexpr int PDU_HEADER_SIZE_BYTES = 28;
+
+  /**
+   * @brief Pre-determined (minimum) length of an IoT Data Modem packet, as
+   * defined in the custom CloudIoTManagement protocol.
+   */
+  static constexpr int CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MINIMUM = 14;
+
+  /**
+   * @brief Pre-determined (maximum) length of the data field in an IoT Data
+   * Modem packet, as defined in the custom CloudIoTManagement protocol.
+   */
+  static constexpr int CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_DATA_FIELD_SIZE_BYTES_MAXIMUM = 32;
+
+  /**
+   * @brief Pre-determined (maximum) length of an IoT Data Modem packet, as
+   * defined in the custom CloudIoTManagement protocol.
+   */
+  static constexpr int CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MAXIMUM = CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MINIMUM + CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_DATA_FIELD_SIZE_BYTES_MAXIMUM;
+
+  /**
+   * @brief Pre-determined length of an IoT Status Modem packet, as defined in
+   * the custom CloudIoTManagement protocol.
+   */
+  static constexpr int CLOUDIOTMANAGEMENT_IOT_STATUS_PACKET_SIZE_BYTES = 2;
+
+  /**
+   * @brief Pre-determined length of an Carrier Switch Perform Modem packet, as
+   * defined in the custom CloudIoTManagement protocol.
+   */
+  static constexpr int CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES = 2;
+
+  /**
+   * @brief Pre-determined length of an Carrier Switch Ack Modem packet, as
+   * defined in the custom CloudIoTManagement protocol.
+   */
+  static constexpr int CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES = 2;
+
+  /**
+   * @brief Structure representing the Modem packet used in the custom
+   * CloudIoTManagement protocol.
+   */
+  struct ModemPacket {
+  public:
+    /**
+     * @brief Enum for Flow field in Modem Packets.
+     */
+    enum Flow : uint8_t {
+      IOT = 0x0,
+      CARRIER_SWITCH = 0x1
+    };
+
+    /**
+     * @brief Virtual destructor to enable inheritance.
+     */
+    virtual ~ModemPacket() {}
+
+    Flow flow : 4;  // 4 bits.
+  };
+
+  /**
+   * @brief Structure representing the IoT Modem packet used in the custom
+   * CloudIoTManagement protocol.
+   */
+  struct IoTPacket : ModemPacket {
+  public:
+    /**
+     * @brief Enum for Topic field in IoT Modem Packets.
+     */
+    enum Topic : uint8_t {
+      DATA = 0x0,
+      STATUS = 0x1
+    };
+
+    Topic topic : 4;  // 4 bits.
+  };
+
+  /**
+   * @brief Structure representing the CarrierSwitch Modem packet used in the
+   * custom CloudIoTManagement protocol.
+   */
+  struct CarrierSwitchPacket : ModemPacket {
+  public:
+    /**
+     * @brief Enum for Topic field in CarrierSwitch Modem packets.
+     */
+    enum Topic : uint8_t {
+      PERFORM = 0x0,
+      ACK = 0x1
+    };
+
+    /**
+     * @brief Enum for Carrier ID fields in the various CarrierSwitch Modem
+     * packets.
+     */
+    enum CarrierID : uint8_t {
+      ATNT = 0x0,
+      TMOBILE = 0x1,
+      VERIZON = 0x2,
+      INVALID = 0xF
+    };
+
+    Topic topic : 4;  // 4 bits.
+  };
+
+  /**
+   * @brief Structure representing the IoT Data Modem packet used in the custom
+   * CloudIoTManagement protocol.
+   */
+  struct IoTDataPacket : IoTPacket {
+  public:
+    uint32_t device_id;
+    uint64_t timestamp;
+    uint32_t data_length;
+    uint8_t data[CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_DATA_FIELD_SIZE_BYTES_MAXIMUM];
+  };
+
+  /**
+   * @brief Structure representing the IoT Status Modem packet used in the
+   * custom CloudIoTManagement protocol.
+   */
+  struct IoTStatusPacket : IoTPacket {
+  public:
+    /**
+     * @brief Enum for Status field in IoT Status Modem packet.
+     */
+    enum Status : uint8_t {
+      NOMINAL = 0x0,
+      IDLE = 0x1,
+      OFF_NOMINAL = 0x2
+    };
+
+    Status status : 4;  // 4 bits.
+  };
+
+  /**
+   * @brief Structure representing the Carrier Switch Perform Modem packet used
+   * in the custom CloudIoTManagement protocol.
+   */
+  struct CarrierSwitchPerformPacket : CarrierSwitchPacket {
+  public:
+    /**
+     * @brief Enum for Status field in IoT Status Modem packet.
+     */
+    enum Status : uint8_t {
+      NOMINAL = 0x0,
+      IDLE = 0x1,
+      OFF_NOMINAL = 0x2
+    };
+
+    CarrierID carrier_id : 4; // 4 bits.
+  };
+
+  /**
+   * @brief Structure representing the Carrier Switch ACK Modem packet used in
+   * the custom CloudIoTManagement protocol.
+   */
+  struct CarrierSwitchACKPacket : CarrierSwitchPacket {
+  public:
+    /**
+     * @brief Enum for Status field in Carrier Switch ACK Modem packet.
+     */
+    enum Status : uint8_t {
+      ACK = 0x0,
+      NACK = 0x1
+    };
+
+    Status status : 4;  // 4 bits.
+    CarrierID carrier_id : 4; // 4 bits.
+  };
+
+  /**
+   * @brief Constructor/destructor for CloudIoTManagement class.
+   *
+   * @param debug Indicate whether or not to output debugging messages to STDOUT.
+   */
+  CloudIoTManagement(bool _debug) : debug(_debug) {}
+  CloudIoTManagement() : debug(false) {}
+  ~CloudIoTManagement() {}
+
+  /**
+   * @brief Initializes the CloudIoTManagement class, particularly the
+   * connection with the external SIM card.
+   *
+   * NOTE: This SIM card/Javacard is connected external to the srsRAN stack,
+   * due to the current project's scope. In a future extension of this project,
+   * we look towards avoiding this external connection, instead exclusively
+   * working within the srsRAN stack.
+   *
+   * @returns SRSRAN_SUCCESS on success, SRSRAN_ERROR on failure.
+   */
+  int init();
+
+  /**
+   * @brief Checks the PDU packet to confirm if it should be decoded as a
+   * custom Modem packet, as defined by the custom CloudIoTManagement protocol.
+   * This applicability is currently determined based on the UDP packet
+   * header's destination port number.
+   *
+   * NOTE: Since our SIM card/Javacard is connected external to the srsRAN stack,
+   * due to the current project's scope, we utilize this method to determine
+   * which packets we should intercept and handle separate from the srsRAN's
+   * handling. In the future, this interception should look to be de-integrated
+   * as much as possible.
+   *
+   * @returns true if the PDU contains an applicable packet, false otherwise.
+   */
+  bool contains_applicable_packet(const uint8_t *pdu_buffer, size_t num_bytes);
+
+  /**
+   * @brief Decodes the UDP packet contained within the PDU packet according to
+   * the custom CloudIoTManagement protocol's defined Modem packet structure,
+   * and sends it to the (externally-connected) SIM card. This method should
+   * only be called if `contains_applicable_packet` returns `true` when called
+   * on the same PDU packet.
+   * 
+   * NOTE: Since our SIM card/Javacard is connected external to the srsRAN stack,
+   * due to the current project's scope, we utilize this method as the main
+   * entry-point to performing the special handling of the intercepted packets
+   * intended for its delivery to our on-SIM-card-application. In the future,
+   * this interception should look to be de-integrated as much as possible.
+   *
+   * @param pdu_buffer Buffer holding the PDU message that contains the custom
+   * UDP packet to handle.
+   * @param num_bytes Size of the `pdu_buffer` argument (expected to be at
+   * least PDU_HEADER_SIZE_BYTES + minimum Modem packet size of 2 bytes).
+   */
+  void handle_packet(const uint8_t *pdu_buffer, size_t num_bytes) {
+    assert(initialized);
+    assert(pdu_buffer != nullptr);
+    assert(num_bytes >= PDU_HEADER_SIZE_BYTES + 1);  // Every PDU must have at least one valid byte beyond its 28 byte header so that we can determine the custom Modem packet header information.
+
+    size_t packet_size = num_bytes - PDU_HEADER_SIZE_BYTES;
+
+    /* Determine Modem Packet type, and then handle each accordingly (decode and send). */
+    uint8_t flow = packet_buffer[0] & 0xF0;
+    uint8_t topic = packet_buffer[0] & 0x0F;
+
+    if (flow == ModemPacket::Flow::IOT) {
+      if (topic == IoTPacket::Topic::DATA) {
+        /* Confirm we have an expected number of bytes, and gracefully handle if not (return early). */
+        if (packet_size < CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MINIMUM ||
+            packet_size > CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MAXIMUM) {
+          printf("CloudIOTManagement: Although the Modem packet's flow and topic field indicated an IoT Data packet, the determined packet size in bytes was unexpected (got %u, but expected at least %u and at most %u).\n", packet_size, CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MINIMUM, CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MAXIMUM);
+          return;
+        }
+
+        /* Decode packet, and send to the SIM card (if there was no decoding errors). */
+        IoTDataPacket packet;
+        if (decode_iot_data(&pdu_buffer[28], packet)) {
+          printf("CloudIOTManagement: An error occured while decoding the IoT Data packet! Dropping packet/avoiding transmission to the SIM card...\n");
+          return;
+        }
+        send_to_sim(packet);
+      }
+      else if (topic == IoTPacket::Topic::STATUS) {
+        /* Confirm we have an expected number of bytes, and gracefully handle if not (return early). */
+        if (packet_size != CLOUDIOTMANAGEMENT_IOT_STATUS_PACKET_SIZE_BYTES) {
+          printf("CloudIOTManagement: Although the Modem packet's flow and topic field indicated an IoT Status packet, the determined packet size in bytes was unexpected (got %u, but expected %u).\n", packet_size, CLOUDIOTMANAGEMENT_IOT_STATUS_PACKET_SIZE_BYTES);
+          return;
+        }
+
+        /* Decode packet, and send to the SIM card (if there was no decoding errors). */
+        IoTStatusPacket packet;
+        if (decode_iot_status(&pdu_buffer[28], packet)) {
+          printf("CloudIOTManagement: An error occured while decoding the IoT Status packet! Dropping packet/avoiding transmission to the SIM card...\n");
+          return;
+        }
+        send_to_sim(packet);
+      }
+      else {
+        printf("CloudIOTManagement: Unrecognized TOPIC field (value: %u) for the IoT Modem packet.\n", topic);
+        return;
+      }
+    }
+    else if (flow == ModemPacket::Flow::CARRIER_SWITCH) {
+      if (topic == CarrierSwitchPacket::Topic::PERFORM) {
+        /* Confirm we have an expected number of bytes, and gracefully handle if not (return early). */
+        if (packet_size != CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES) {
+          printf("CloudIOTManagement: Although the Modem packet's flow and topic field indicated a Carrier Switch Perform packet, the determined packet size in bytes was unexpected (got %u, but expected %u).\n", packet_size, CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES);
+          return;
+        }
+
+        /* Decode packet, and send to the SIM card (if there was no decoding errors). */
+        IoTStatusPacket packet;
+        if (decode_iot_status(&pdu_buffer[28], packet)) {
+          printf("CloudIOTManagement: An error occured while decoding the IoT Status packet! Dropping packet/avoiding transmission to the SIM card...\n");
+          return;
+        }
+        send_to_sim(packet);
+      }
+      else if (topic == CarrierSwitchPacket::Topic::ACK) {
+        printf("CloudIOTManagement: Unexpectedly intercepted a Carrier Switch ACK packet which should not be sent to the SIM card. Dropping packet/avoiding transmission to the SIM card...\n");
+        return;
+      }
+      else {
+        printf("CloudIOTManagement: Unrecognized TOPIC field (value: %u) for the Carrier Switch Modem packet.\n", topic);
+        return;
+      }
+    }
+    else {
+      printf("CloudIOTManagement: Unrecognized FLOW field (value: %u) for the Modem packet.\n", flow);
+      return;
+    }
+  }
+
+  /**
+   * @brief Constructs/formats the associated APDU message for the specified
+   * Modem packet, and transmits it to the SIM card.
+   *
+   * NOTE: The `init` method must be called to initialize the
+   * CloudIoTManagement object before invoking this method.
+   *
+   * @param packet const reference to the Modem packet to be sent.
+   */
+  void send_to_sim(const ModemPacket &packet) {
+    assert(initialized);
+
+    if (debug) {
+      printf("Sending Modem packet to SIM card...\n");
+    }
+
+    // TODO(hcassar): Implement.
+  }
+
+private:
+  /**
+   * @brief Decoder helper method for IoT Data Modem packets. Returns whether
+   * or not the IoT Data packet was valid and/or decoding was successful. If
+   * the decoding was unsuccessful, the IoTDataPacket's contents are not to
+   * be trusted.
+   *
+   * NOTE: Buffer size validation is expected to be completed by the caller.
+   *
+   * @param packet_buffer const pointer to the byte buffer to decode.
+   * @param packet const reference to the IoTDataPacket object to populate.
+   *
+   * @returns true if the decoding was successful, false otherwise.
+   */
+  bool decode_iot_data(const uint8_t *packet_buffer, IoTDataPacket &packet) {
+    assert(packet_buffer != nullptr);
+
+    if (debug) {
+      printf("Decoding IoT Data packet...\n");
+    }
+
+    // TODO(hcassar): Implement.
+    // TODO(hcassar): Add `flow` and `topic` initialization into the IoTDataPacket initializer list.
+    // TODO(hcassar): Add abstract method to ModemPacket struct (perhaps for printing out to debug? or APDU format?).
+    // TODO(hcassar): Move implementations over to CPP file.
+    // TODO(hcassar): Consider adding implementations to a new file to be added in the build system.
+
+    // if (modem_packet->flow)
+    // result.flow = firstByte >> 4;
+    // result.topic = firstByte & 0x0F;
+
+    // // Copy payload into the struct
+    // size_t payloadSize = size - 1;
+    // payloadSize = (payloadSize > sizeof(result.payload)) ? sizeof(result.payload) : payloadSize;
+    // std::memcpy(result.payload, buffer + 1, payloadSize);
+
+    return false;
+  }
+
+  /**
+   * @brief Decoder helper method for IoT Status Modem packets. Returns whether
+   * or not the IoT Status packet was valid and/or decoding was successful. If
+   * the decoding was unsuccessful, the IoTStatusPacket's contents are not to
+   * be trusted.
+   *
+   * NOTE: Buffer size validation is expected to be completed by the caller.
+   *
+   * @param packet_buffer const pointer to the byte buffer to decode.
+   * @param packet const reference to the IoTStatusPacket object to populate.
+   *
+   * @returns true if the decoding was successful, false otherwise.
+   */
+  bool decode_iot_status(const uint8_t *packet_buffer, IoTStatusPacket &packet) {
+    assert(packet_buffer != nullptr);
+    
+    if (debug) {
+      printf("Decoding IoT Status packet...\n");
+    }
+
+    // TODO(hcassar): Implement.
+    return false;
+  }
+
+  /**
+   * @brief Decoder helper method for Carrier Switch Perform Modem packets.
+   * Returns whether or not the Carrier Switch Perform packet was valid and/or
+   * decoding was successful. If the decoding was unsuccessful, the
+   * CarrierSwitchPerformPacket's contents are not to be trusted.
+   *
+   * NOTE: Buffer size validation is expected to be completed by the caller.
+   *
+   * @param packet_buffer const pointer to the byte buffer to decode.
+   * @param packet const reference to the CarrierSwitchPerformPacket object to populate.
+   *
+   * @returns true if the decoding was successful, false otherwise.
+   */
+  bool decode_carrier_switch_perform(const uint8_t *packet_buffer, CarrierSwitchPerformPacket &packet) {
+    assert(packet_buffer != nullptr);
+
+    if (debug) {
+      printf("Decoding Carrier Switch Perform packet...\n");
+    }
+
+    // TODO(hcassar): Implement.
+    return false;
+  }
+
+  /**
+   * @brief Decoder helper method for Carrier Switch ACK Modem packets.
+   * Returns whether or not the Carrier Switch ACK packet was valid and/or
+   * decoding was successful. If the decoding was unsuccessful, the
+   * CarrierSwitchACKPacket's contents are not to be trusted.
+   *
+   * NOTE: Buffer size validation is expected to be completed by the caller.
+   *
+   * @param packet_buffer const pointer to the byte buffer to decode.
+   * @param packet const reference to the CarrierSwitchACKPacket object to populate.
+   *
+   * @returns true if the decoding was successful, false otherwise.
+   */
+  bool decode_carrier_switch_ack(const uint8_t *packet_buffer, CarrierSwitchACKPacket &packet) {
+    assert(packet_buffer != nullptr);
+
+    if (debug) {
+      printf("Decoding Carrier Switch ACK packet...\n");
+    }
+
+    // TODO(hcassar): Implement.
+    return false;
+  }
+
+  /**
+   * @brief Boolean flag determining whether or not debugging logs should be
+   * outputted or not.
+   */
+  bool debug;
+
+  /**
+   * @brief Boolean flag determining whether or not the CloudIoTManagement
+   * object's `init` method has been called yet.
+   */
+  bool initialized;
 };
 
 } // namespace srsue
