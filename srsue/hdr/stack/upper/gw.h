@@ -51,74 +51,6 @@ struct gw_args_t {
   std::string tun_dev_netmask;
 };
 
-class gw : public gw_interface_stack, public srsran::thread
-{
-public:
-  gw(srslog::basic_logger& logger_);
-  ~gw();
-  int  init(const gw_args_t& args_, stack_interface_gw* stack);
-  void stop();
-
-  void get_metrics(gw_metrics_t& m, const uint32_t nof_tti);
-
-  // PDCP interface
-  void write_pdu(uint32_t lcid, srsran::unique_byte_buffer_t pdu);
-  void write_pdu_mch(uint32_t lcid, srsran::unique_byte_buffer_t pdu);
-
-  // NAS interface
-  int  setup_if_addr(uint32_t eps_bearer_id, uint8_t pdn_type, uint32_t ip_addr, uint8_t* ipv6_if_addr, char* err_str);
-  int  deactivate_eps_bearer(const uint32_t eps_bearer_id);
-  int  apply_traffic_flow_template(const uint8_t& eps_bearer_id, const LIBLTE_MME_TRAFFIC_FLOW_TEMPLATE_STRUCT* tft);
-  void set_test_loop_mode(const test_loop_mode_state_t mode, const uint32_t ip_pdu_delay_ms);
-
-  // RRC interface
-  void add_mch_port(uint32_t lcid, uint32_t port);
-  bool is_running();
-
-private:
-  static const int GW_THREAD_PRIO = -1;
-
-  stack_interface_gw* stack = nullptr;
-
-  gw_args_t args = {};
-
-  std::atomic<bool> running    = {false};
-  std::atomic<bool> run_enable = {false};
-  int32_t           netns_fd   = 0;
-  int32_t           tun_fd     = 0;
-  struct ifreq      ifr        = {};
-  int32_t           sock       = 0;
-  std::atomic<bool> if_up      = {false};
-
-  static const int NOT_ASSIGNED          = -1;
-  int32_t          default_eps_bearer_id = NOT_ASSIGNED;
-  std::mutex       gw_mutex;
-
-  srslog::basic_logger& logger;
-
-  uint32_t current_ip_addr = 0;
-  uint8_t  current_if_id[8];
-
-  uint32_t                                       ul_tput_bytes = 0;
-  uint32_t                                       dl_tput_bytes = 0;
-  std::chrono::high_resolution_clock::time_point metrics_tp; // stores time when last metrics have been taken
-
-  void run_thread();
-  int  init_if(char* err_str);
-  int  setup_if_addr4(uint32_t ip_addr, char* err_str);
-  int  setup_if_addr6(uint8_t* ipv6_if_id, char* err_str);
-  bool find_ipv6_addr(struct in6_addr* in6_out);
-  void del_ipv6_addr(struct in6_addr* in6p);
-
-  // MBSFN
-  int                mbsfn_sock_fd                   = 0;  // Sink UDP socket file descriptor
-  struct sockaddr_in mbsfn_sock_addr                 = {}; // Target address
-  uint32_t           mbsfn_ports[SRSRAN_N_MCH_LCIDS] = {}; // Target ports for MBSFN data
-
-  // TFT
-  tft_pdu_matcher tft_matcher;
-};
-
 // TODO(hcassar): Consider adding CloudIoTManagement source code to a new file to be added in the build system.
 
 class CloudIoTManagement
@@ -165,6 +97,12 @@ public:
    * defined in the custom CloudIoTManagement protocol.
    */
   static constexpr size_t CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES = 2;
+
+  /**
+   * @brief Port number used for the CloudIoTManagement application that obeys
+   * the CloudIoTManagement custom UDP-based protocol.
+   */
+  static constexpr uint16_t CLOUDIOTMANAGEMENT_PORT_NUMBER = 6002;
 
   /**
    * @brief Structure representing the Modem packet used in the custom
@@ -590,6 +528,14 @@ private:
   bool decode_carrier_switch_ack(const uint8_t *packet_buffer, CarrierSwitchACKPacket &packet);
 
   /**
+   * @brief Helper to simply print out all fields of the specified IP packet.
+   *
+   * @param pdu_buffer Buffer holding PDU message.
+   * @param num_bytes Length of PDU in bytes in specified buffer.
+   */
+  void print_pdu(const uint8_t *pdu_buffer, size_t num_bytes);
+
+  /**
    * @brief Boolean flag determining whether or not debugging logs should be
    * outputted or not.
    */
@@ -600,6 +546,84 @@ private:
    * object's `init` method has been called yet.
    */
   bool initialized;
+};
+
+class gw : public gw_interface_stack, public srsran::thread
+{
+public:
+
+  /**
+   * @brief Flag indicating whether or not we should build `gw` and
+   * `CloudIoTManagement` in DEBUG mode.
+   */
+  static constexpr bool CLOUDIOTMANAGEMENT_DEBUG = true;
+
+  gw(srslog::basic_logger& logger_);
+  ~gw();
+  int  init(const gw_args_t& args_, stack_interface_gw* stack);
+  void stop();
+
+  void get_metrics(gw_metrics_t& m, const uint32_t nof_tti);
+
+  // PDCP interface
+  void write_pdu(uint32_t lcid, srsran::unique_byte_buffer_t pdu);
+  void write_pdu_mch(uint32_t lcid, srsran::unique_byte_buffer_t pdu);
+
+  // NAS interface
+  int  setup_if_addr(uint32_t eps_bearer_id, uint8_t pdn_type, uint32_t ip_addr, uint8_t* ipv6_if_addr, char* err_str);
+  int  deactivate_eps_bearer(const uint32_t eps_bearer_id);
+  int  apply_traffic_flow_template(const uint8_t& eps_bearer_id, const LIBLTE_MME_TRAFFIC_FLOW_TEMPLATE_STRUCT* tft);
+  void set_test_loop_mode(const test_loop_mode_state_t mode, const uint32_t ip_pdu_delay_ms);
+
+  // RRC interface
+  void add_mch_port(uint32_t lcid, uint32_t port);
+  bool is_running();
+
+private:
+  static const int GW_THREAD_PRIO = -1;
+
+  stack_interface_gw* stack = nullptr;
+
+  gw_args_t args = {};
+
+  std::atomic<bool> running    = {false};
+  std::atomic<bool> run_enable = {false};
+  int32_t           netns_fd   = 0;
+  int32_t           tun_fd     = 0;
+  struct ifreq      ifr        = {};
+  int32_t           sock       = 0;
+  std::atomic<bool> if_up      = {false};
+
+  static const int NOT_ASSIGNED          = -1;
+  int32_t          default_eps_bearer_id = NOT_ASSIGNED;
+  std::mutex       gw_mutex;
+
+  srslog::basic_logger& logger;
+
+  uint32_t current_ip_addr = 0;
+  uint8_t  current_if_id[8];
+
+  uint32_t                                       ul_tput_bytes = 0;
+  uint32_t                                       dl_tput_bytes = 0;
+  std::chrono::high_resolution_clock::time_point metrics_tp; // stores time when last metrics have been taken
+
+  void run_thread();
+  int  init_if(char* err_str);
+  int  setup_if_addr4(uint32_t ip_addr, char* err_str);
+  int  setup_if_addr6(uint8_t* ipv6_if_id, char* err_str);
+  bool find_ipv6_addr(struct in6_addr* in6_out);
+  void del_ipv6_addr(struct in6_addr* in6p);
+
+  // MBSFN
+  int                mbsfn_sock_fd                   = 0;  // Sink UDP socket file descriptor
+  struct sockaddr_in mbsfn_sock_addr                 = {}; // Target address
+  uint32_t           mbsfn_ports[SRSRAN_N_MCH_LCIDS] = {}; // Target ports for MBSFN data
+
+  // TFT
+  tft_pdu_matcher tft_matcher;
+
+  // CloudIoTManagement
+  CloudIoTManagement cloudiotmanagement;
 };
 
 } // namespace srsue

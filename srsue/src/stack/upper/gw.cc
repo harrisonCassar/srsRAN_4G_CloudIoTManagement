@@ -43,7 +43,7 @@ namespace srsue {
  * gw Class Definition
  *****************************************************************************/
 
-gw::gw(srslog::basic_logger& logger_) : thread("GW"), logger(logger_), tft_matcher(logger) {}
+gw::gw(srslog::basic_logger& logger_) : thread("GW"), logger(logger_), tft_matcher(logger), cloudiotmanagement(CLOUDIOTMANAGEMENT_DEBUG) {}
 
 int gw::init(const gw_args_t& args_, stack_interface_gw* stack_)
 {
@@ -156,46 +156,27 @@ void gw::write_pdu(uint32_t lcid, srsran::unique_byte_buffer_t pdu)
     // Only handle IPv4 and IPv6 packets
     struct iphdr* ip_pkt = (struct iphdr*)pdu->msg;
     if (ip_pkt->version == 4 || ip_pkt->version == 6) {
-      unsigned char tmp = ip_pkt->version;
-      printf("CloudIOTManagement: write_pdu with packet %u; ihl: %u; tot_len: %u; pdu->N_bytes: %u\n", tmp, ip_pkt->ihl, ip_pkt->tot_len, pdu->N_bytes);
-      uint16_t destination_port = (pdu->msg[22] << 8) +
-                                  (pdu->msg[23] << 0);
-      printf("CloudIOTManagement: destination port: %u\n", destination_port);
-      if (destination_port == 6002) {
-        /* Process/decode packet that is meant for our application. */
-        
-        printf("Version, IHL: %u\n", pdu->msg[0]);
-        printf("TOS: %u\n", pdu->msg[1]);
-        printf("Total Length: %u\n", (pdu->msg[2] << 8) +
-                                     (pdu->msg[3] << 0));
-        printf("ID: %u\n", (pdu->msg[4] << 8) +
-                           (pdu->msg[5] << 0));
-        printf("Fragment Offset: %u\n", (pdu->msg[6] << 8) +
-                                        (pdu->msg[7] << 0));
-        printf("TTL: %u\n", pdu->msg[8]);
-        printf("Protocol: %u\n", pdu->msg[9]);
-        printf("Header Checksum: %u\n", (pdu->msg[10] << 8) +
-                                        (pdu->msg[11] << 0));
-        printf("Source IP address: %u.%u.%u.%u\n", pdu->msg[12], pdu->msg[13], pdu->msg[14], pdu->msg[15]);
-        printf("Destination IP address: %u.%u.%u.%u\n", pdu->msg[16], pdu->msg[17], pdu->msg[18], pdu->msg[19]);
-        printf("Source Port: %u\n", (pdu->msg[20] << 8) +
-                                    (pdu->msg[21] << 0));
-        printf("Destination Port: %u\n", (pdu->msg[22] << 8) +
-                                         (pdu->msg[23] << 0));
-        printf("UDP Length: %u\n", (pdu->msg[24] << 8) +
-                                   (pdu->msg[25] << 0));
-        printf("UDP Checksum: %u\n", (pdu->msg[26] << 8) +
-                                     (pdu->msg[27] << 0));
-        printf("Payload: ");
-        for (size_t i = 28; i < pdu->N_bytes; i++)
-          printf("%u ", pdu->msg[i]);
-        printf("\n");
+      if (CLOUDIOTMANAGEMENT_DEBUG) {
+        printf("CloudIoTManagement: write_pdu with packet %u; ihl: %u; tot_len: %u; pdu->N_bytes: %u\n", ip_pkt->version, ip_pkt->ihl, ip_pkt->tot_len, pdu->N_bytes);
+      }
 
-        // ...decode our protocol here...
-
-        /* . */
-        
+      /* Intercept all CloudIoTManagement-specific packets to handle separately. */
+      if (cloudiotmanagement.contains_applicable_packet(pdu->msg, pdu->N_bytes)) {
+        /*
+         * Packet is a CloudIoTManagement packet, so perform special handling,
+         * specifically by decoding it, and constructing and sending the
+         * appropiate APDU message to the externally-connected SIM card
+         * according to the CloudIoTManagement custom protocol.
+         */
+        if (CLOUDIOTMANAGEMENT_DEBUG) {
+          printf("CloudIoTManagement: Found applicable packet!");
+        }
+        cloudiotmanagement.handle_packet(pdu->msg, pdu->N_bytes);
       } else {
+        /*
+         * Packet is a non-CloudIoTManagement packet, so perform normal
+         * handling by writing it to the srsRAN network stack.
+         */
         int n = write(tun_fd, pdu->msg, pdu->N_bytes);
         if (n > 0 && (pdu->N_bytes != (uint32_t)n)) {
           logger.warning("DL TUN/TAP write failure. Wanted to write %d B but only wrote %d B.", pdu->N_bytes, n);
@@ -797,9 +778,11 @@ int CloudIoTManagement::init() {
   return SRSRAN_SUCCESS;
 }
 
-bool contains_applicable_packet(const uint8_t *pdu_buffer, size_t num_bytes) {
-  // TODO(hcassar): Implement.
-  return false;
+bool CloudIoTManagement::contains_applicable_packet(const uint8_t *pdu_buffer, size_t num_bytes) {
+  assert(num_bytes >= PDU_HEADER_SIZE_BYTES);
+  uint16_t destination_port = (pdu_buffer[22] << 8) +
+                              (pdu_buffer[23] << 0);
+  return destination_port == CLOUDIOTMANAGEMENT_PORT_NUMBER;
 }
 
 void CloudIoTManagement::handle_packet(const uint8_t *pdu_buffer, size_t num_bytes) {
@@ -807,11 +790,14 @@ void CloudIoTManagement::handle_packet(const uint8_t *pdu_buffer, size_t num_byt
   assert(pdu_buffer != nullptr);
   assert(num_bytes >= PDU_HEADER_SIZE_BYTES + 1);  // Every PDU must have at least one valid byte beyond its 28 byte header so that we can determine the custom Modem packet header information.
 
-  size_t packet_size = num_bytes - PDU_HEADER_SIZE_BYTES;
+  if (debug) {
+    print_pdu(pdu_buffer, num_bytes);
+  }
 
   /* Determine Modem Packet type, and then handle each accordingly (decode and send). */
   uint8_t flow = pdu_buffer[PDU_HEADER_SIZE_BYTES] & 0xF0;
   uint8_t topic = pdu_buffer[PDU_HEADER_SIZE_BYTES] & 0x0F;
+  size_t packet_size = num_bytes - PDU_HEADER_SIZE_BYTES;
 
   if (flow == ModemPacket::Flow::IOT) {
     if (topic == IoTPacket::Topic::DATA) {
@@ -943,6 +929,38 @@ bool CloudIoTManagement::decode_carrier_switch_ack(const uint8_t *packet_buffer,
 
   // TODO(hcassar): Implement.
   return false;
+}
+
+void CloudIoTManagement::print_pdu(const uint8_t *pdu_buffer, size_t num_bytes) {
+  assert(num_bytes >= PDU_HEADER_SIZE_BYTES);
+  printf("=======================================\n");
+  printf("Version, IHL: %u\n", pdu_buffer[0]);
+  printf("TOS: %u\n", pdu_buffer[1]);
+  printf("Total Length: %u\n", (pdu_buffer[2] << 8) +
+                                (pdu_buffer[3] << 0));
+  printf("ID: %u\n", (pdu_buffer[4] << 8) +
+                      (pdu_buffer[5] << 0));
+  printf("Fragment Offset: %u\n", (pdu_buffer[6] << 8) +
+                                  (pdu_buffer[7] << 0));
+  printf("TTL: %u\n", pdu_buffer[8]);
+  printf("Protocol: %u\n", pdu_buffer[9]);
+  printf("Header Checksum: %u\n", (pdu_buffer[10] << 8) +
+                                  (pdu_buffer[11] << 0));
+  printf("Source IP address: %u.%u.%u.%u\n", pdu_buffer[12], pdu_buffer[13], pdu_buffer[14], pdu_buffer[15]);
+  printf("Destination IP address: %u.%u.%u.%u\n", pdu_buffer[16], pdu_buffer[17], pdu_buffer[18], pdu_buffer[19]);
+  printf("Source Port: %u\n", (pdu_buffer[20] << 8) +
+                              (pdu_buffer[21] << 0));
+  printf("Destination Port: %u\n", (pdu_buffer[22] << 8) +
+                                    (pdu_buffer[23] << 0));
+  printf("UDP Length: %u\n", (pdu_buffer[24] << 8) +
+                              (pdu_buffer[25] << 0));
+  printf("UDP Checksum: %u\n", (pdu_buffer[26] << 8) +
+                                (pdu_buffer[27] << 0));
+  printf("Payload: ");
+  for (size_t i = 28; i < num_bytes; i++)
+    printf("%u ", pdu_buffer[i]);
+  printf("\n");
+  printf("=======================================\n");
 }
 
 /*****************************************************************************
