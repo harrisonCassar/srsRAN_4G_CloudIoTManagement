@@ -102,10 +102,23 @@ public:
   static constexpr size_t CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES = 2;
 
   /**
-   * @brief Port number used for the CloudIoTManagement application that obeys
-   * the CloudIoTManagement custom UDP-based protocol.
+   * @brief Modem port number used for the CloudIoTManagement application that
+   * obeys the CloudIoTManagement custom UDP-based protocol.
    */
-  static constexpr uint16_t CLOUDIOTMANAGEMENT_PORT_NUMBER = 6002;
+  static constexpr uint16_t CLOUDIOTMANAGEMENT_MODEM_PORT_NUMBER = 6002;
+
+  /**
+   * @brief Server port number used for the CloudIoTManagement application that
+   * obeys the CloudIoTManagement custom UDP-based protocol.
+   */
+  static constexpr uint16_t CLOUDIOTMANAGEMENT_SERVER_PORT_NUMBER = 6001;
+
+  /**
+   * @brief Server IP address used for the CloudIoTManagement application that
+   * obeys the CloudIoTManagement custom UDP-based protocol.
+   */
+  #define CLOUDIOTMANAGEMENT_SERVER_IP_ADDRESS "127.0.0.1"
+
 
   /**
    * @brief Structure that holds the full components for an 8-byte temporenc
@@ -883,6 +896,17 @@ private:
   static void print_pdu(const uint8_t *pdu_buffer, size_t num_bytes);
 
   /**
+   * @brief Sends the message in the specified buffer of the specified length
+   * in bytes to the cloud subsystem over a UDP socket.
+   *
+   * @param bytes_buffer const buffer holding message-to-be-sent.
+   * @param num_bytes Length of message in the specified buffer.
+   *
+   * @returns SRSRAN_SUCCESS on success, SRSRAN_ERROR on failure.
+   */
+  long send_to_cloud(const uint8_t *bytes_buffer, size_t num_bytes);
+
+  /**
    * @brief Boolean flag determining whether or not debugging logs should be
    * outputted or not.
    */
@@ -892,6 +916,18 @@ private:
    * @brief Object representing the interface with the smart card.
    */
   scard sc;
+
+  /**
+   * @brief Socket file descriptor for uplinking UDP traffic to the cloud
+   * subsystem's UDP server.
+   */
+  int uplink_socket_fd;
+
+  /**
+   * @brief Struct holding the destination server address/port to uplink
+   * traffic to.
+   */
+  struct sockaddr_in uplink_server_addr;
 
   /**
    * @brief Boolean flag determining whether or not the CloudIoTManagement

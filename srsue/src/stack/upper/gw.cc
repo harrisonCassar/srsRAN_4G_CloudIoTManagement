@@ -769,17 +769,44 @@ out:
 
 CloudIoTManagement::CloudIoTManagement(bool _debug) : debug(_debug),
                                                       sc(_debug),
-                                                      initialized(false) {}
+                                                      uplink_socket_fd(-1),
+                                                      initialized(false) {
+                                                        memset(&uplink_server_addr, 0, sizeof(uplink_server_addr));
+                                                      }
 CloudIoTManagement::CloudIoTManagement() : debug(false),
                                            sc(false),
-                                           initialized(false) {}
-CloudIoTManagement::~CloudIoTManagement() {}
+                                           uplink_socket_fd(-1),
+                                           initialized(false) {
+                                             memset(&uplink_server_addr, 0, sizeof(uplink_server_addr));
+                                           }
+CloudIoTManagement::~CloudIoTManagement() {
+  if (initialized) {
+    sc.deinit();
+    close(uplink_socket_fd);
+  }
+
+  printf("CloudIoTManagement: deinit/destructor completed!");
+}
 
 int CloudIoTManagement::init() {
   assert(!initialized);
 
   /* Init the connection to the SIM card. */
   sc.init();
+
+  /* Init the socket we will use to uplink traffic to the cloud subsystem's UDP server. */
+  if ((uplink_socket_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+    printf("CloudIoTManagement ERROR: Uplink docket creation failed: %s\n", strerror(errno));
+    return SRSRAN_ERROR;
+  }
+
+  uplink_server_addr.sin_family = AF_INET;
+  uplink_server_addr.sin_port = htons(CLOUDIOTMANAGEMENT_SERVER_PORT_NUMBER);
+  if (inet_pton(AF_INET, CLOUDIOTMANAGEMENT_SERVER_IP_ADDRESS, &uplink_server_addr.sin_addr) <= 0) {
+    printf("CloudIoTManagement ERROR: Failed to convert IP address %s: %s\n", CLOUDIOTMANAGEMENT_SERVER_IP_ADDRESS, strerror(errno));
+    close(uplink_socket_fd);
+    return SRSRAN_ERROR;
+  }
 
   /* Mark that we've now been initialized. */
   initialized = true;
@@ -793,7 +820,7 @@ bool CloudIoTManagement::contains_applicable_packet(const uint8_t *pdu_buffer, s
   assert(num_bytes >= PDU_HEADER_SIZE_BYTES);
   uint16_t destination_port = (pdu_buffer[22] << 8) +
                               (pdu_buffer[23] << 0);
-  return destination_port == CLOUDIOTMANAGEMENT_PORT_NUMBER;
+  return destination_port == CLOUDIOTMANAGEMENT_MODEM_PORT_NUMBER;
 }
 
 void CloudIoTManagement::handle_packet(const uint8_t *pdu_buffer, size_t num_bytes) {
@@ -832,7 +859,7 @@ void CloudIoTManagement::handle_packet(const uint8_t *pdu_buffer, size_t num_byt
       packet.send_and_recv_sim(sc, response_buffer, num_response_bytes);
 
       /* Send response to our cloud subsystem. */
-      //TODO(hcassar): Implement.
+      send_to_cloud(response_buffer, num_response_bytes);
     }
     else if (topic == IoTPacket::Topic::STATUS) {
       /* Confirm we have an expected number of bytes, and gracefully handle if not (return early). */
@@ -854,7 +881,7 @@ void CloudIoTManagement::handle_packet(const uint8_t *pdu_buffer, size_t num_byt
       packet.send_and_recv_sim(sc, response_buffer, num_response_bytes);
 
       /* Send response to our cloud subsystem. */
-      //TODO(hcassar): Implement.
+      send_to_cloud(response_buffer, num_response_bytes);
     }
     else {
       printf("CloudIOTManagement: Unrecognized TOPIC field (value: %u) for the IoT Modem packet.\n", topic);
@@ -883,11 +910,29 @@ void CloudIoTManagement::handle_packet(const uint8_t *pdu_buffer, size_t num_byt
       packet.send_and_recv_sim(sc, response_buffer, num_response_bytes);
 
       /* Send response to our cloud subsystem. */
-      //TODO(hcassar): Implement.
+      send_to_cloud(response_buffer, num_response_bytes);
     }
     else if (topic == CarrierSwitchPacket::Topic::ACK) {
-      printf("CloudIOTManagement: Unexpectedly intercepted a Carrier Switch ACK packet which should not be sent to the SIM card. Dropping packet/avoiding transmission to the SIM card...\n");
-      return;
+      /* Confirm we have an expected number of bytes, and gracefully handle if not (return early). */
+      if (packet_size != CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES) {
+        printf("CloudIOTManagement: Although the Modem packet's flow and topic field indicated a Carrier Switch ACK packet, the determined packet size in bytes was unexpected (got %lu, but expected %lu).\n", packet_size, CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES);
+        return;
+      }
+
+      /* Decode packet, and send to the SIM card (if there was no decoding errors). */
+      CarrierSwitchPerformPacket packet;
+      if (!decode_carrier_switch_ack(&pdu_buffer[PDU_HEADER_SIZE_BYTES], packet)) {
+        printf("CloudIOTManagement: An error occured while decoding the Carrier Switch ACK packet! Dropping packet/avoiding transmission to the SIM card...\n");
+        return;
+      }
+
+      /* Send packet to SIM card, and buffer the response. */
+      uint8_t response_buffer[CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES];
+      size_t num_response_bytes = sizeof(response_buffer);
+      packet.send_and_recv_sim(sc, response_buffer, num_response_bytes);
+
+      /* Send response to our cloud subsystem. */
+      send_to_cloud(response_buffer, num_response_bytes);
     }
     else {
       printf("CloudIOTManagement: Unrecognized TOPIC field (value: %u) for the Carrier Switch Modem packet.\n", topic);
@@ -1088,6 +1133,18 @@ void CloudIoTManagement::print_pdu(const uint8_t *pdu_buffer, size_t num_bytes) 
     printf("%u ", pdu_buffer[i]);
   printf("\n");
   printf("=======================================\n");
+}
+
+long CloudIoTManagement::send_to_cloud(const uint8_t *bytes_buffer, size_t num_bytes) {
+  ssize_t bytes_sent = sendto(uplink_socket_fd, bytes_buffer, num_bytes, 0, (const struct sockaddr*)&uplink_server_addr, sizeof(uplink_server_addr));
+  if (bytes_sent < 0) {
+    printf("CloudIoTManagement ERROR: Error while sending message to cloud subsystem: \"%s\" Dropping packet...\n", strerror(errno));
+    return SRSRAN_ERROR;
+  }
+
+  printf("CloudIoTManagement INFO: Successfully sent %lu bytes to the server at (%s, %u)\n", static_cast<size_t>(bytes_sent), CLOUDIOTMANAGEMENT_SERVER_IP_ADDRESS, CLOUDIOTMANAGEMENT_SERVER_PORT_NUMBER);
+
+  return SRSRAN_SUCCESS;
 }
 
 /*****************************************************************************
