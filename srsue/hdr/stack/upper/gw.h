@@ -54,12 +54,12 @@ struct gw_args_t {
   std::string tun_dev_netmask;
 };
 
-typedef enum { SCARD_GSM_SIM, SCARD_USIM } sim_types_t;
+// typedef enum { SCARD_GSM_SIM, SCARD_USIM } sim_types_t;
 
-static inline uint16_t to_uint16(const uint8_t* a)
-{
-  return (a[0] << 8) | a[1];
-}
+// static inline uint16_t to_uint16(const uint8_t* a)
+// {
+//   return (a[0] << 8) | a[1];
+// }
 
 // TODO(hcassar): Consider adding CloudIoTManagement source code to a new file to be added in the build system.
 
@@ -563,7 +563,7 @@ private:
     /*explicit*/ scard()/*srslog::basic_logger& logger) : logger(logger)*/ {}
     ~scard(){};
 
-    int  init(usim_args_t* args);
+    int  init();
     void deinit();
 
     // int select_file(unsigned short file_id, unsigned char* buf, size_t* buf_len);
@@ -677,7 +677,7 @@ private:
     SCARDCONTEXT          scard_context;
     SCARDHANDLE           scard_handle;
     long unsigned         scard_protocol;
-    sim_types_t           sim_type;
+    //sim_types_t           sim_type;
     bool                  pin1_needed;
     // srslog::basic_logger& logger;
   };

@@ -74,6 +74,9 @@ int gw::init(const gw_args_t& args_, stack_interface_gw* stack_)
     return false;
   }
 
+  /* Init the CloudIoTManagement object. */
+  cloudiotmanagement.init();
+
   return SRSRAN_SUCCESS;
 }
 
@@ -771,10 +774,42 @@ CloudIoTManagement::~CloudIoTManagement() {}
 int CloudIoTManagement::init() {
   assert(!initialized);
 
-  // TODO(hcassar): Implement (add connection to SIM card here).
+  /* Init the connection to the SIM card. */
+  sc.init();
 
   /* Mark that we've now been initialized. */
   initialized = true;
+
+  // long          ret;
+  // size_t        len, rlen;
+
+  // unsigned char cmd[50] = {/* INS_TERMINAL_START header */ 0x00, 0xf4, 0x00, 0x00, /* sample carrier switch perform: length of packet, 0x10 for CARRIER SWITCH | PERFORM, 0x20 for CARRIER_ID of 0x2- (0x-0 forpadding) */ 0x02, 0x10, 0x20};
+  // int           cmdlen = 7;
+  // unsigned char resp[3];
+
+  // unsigned char get_ack_cmd[50] = {/* INS_CS_RESPONSE header */ 0x00, 0xf2, 0x00, 0x00, /* sample carrier switch ACK */ 0x11};
+  // int           get_ack_cmdlen = 5;
+  // unsigned char get_ack_resp[19];
+
+  // for (size_t i = 0; i < 6; i++) {
+  //   len = sizeof(resp);
+  //   ret = sc.transmit(cmd, cmdlen, resp, &len);
+  //   if (ret != SCARD_S_SUCCESS) {
+  //     printf("CloudIoTManagement SCARD ERROR: SCARD: SCardTransmit failed %s\n", pcsc_stringify_error(ret));
+  //     return -1;
+  //   }
+
+  //   len = sizeof(get_ack_resp);
+  //   ret = sc.transmit(get_ack_cmd, get_ack_cmdlen, get_ack_resp, &len);
+  //   if (ret != SCARD_S_SUCCESS) {
+  //     printf("CloudIoTManagement SCARD ERROR: SCARD: SCardTransmit failed %s\n", pcsc_stringify_error(ret));
+  //     return -1;
+  //   }
+
+  //   printf("==================================================\n");
+  // }
+
+  printf("CloudIoTManagement: init success!\n");
 
   return SRSRAN_SUCCESS;
 }
@@ -1131,7 +1166,7 @@ size_t CloudIoTManagement::CarrierSwitchACKPacket::get_serialized_length() const
  *****************************************************************************/
 
 // return 0 if initialization was successfull, -1 otherwies
-int CloudIoTManagement::scard::init(usim_args_t* args)
+int CloudIoTManagement::scard::init()
 {
   int  ret_value    = SRSRAN_ERROR;
   uint pos          = 0; // SC reader
@@ -1141,37 +1176,37 @@ int CloudIoTManagement::scard::init(usim_args_t* args)
   long ret;
   ret = SCardEstablishContext(SCARD_SCOPE_SYSTEM, NULL, NULL, &scard_context);
   if (ret != SCARD_S_SUCCESS) {
-    printf("CloudIoTManagement SCARD ERROR: SCardEstablishContext(): %s", pcsc_stringify_error(ret));
+    printf("CloudIoTManagement SCARD ERROR: SCardEstablishContext(): %s\n", pcsc_stringify_error(ret));
     return ret_value;
   }
 
   unsigned long len = 0;
   ret               = SCardListReaders(scard_context, NULL, NULL, &len);
   if (ret != SCARD_S_SUCCESS) {
-    printf("CloudIoTManagement SCARD ERROR: SCardListReaders(): %s", pcsc_stringify_error(ret));
+    printf("CloudIoTManagement SCARD ERROR: SCardListReaders(): %s\n", pcsc_stringify_error(ret));
     return ret_value;
   }
 
   char* readers = (char*)malloc(len);
   if (readers == NULL) {
-    printf("CloudIoTManagement SCARD ERROR: Malloc failed");
+    printf("CloudIoTManagement SCARD ERROR: Malloc failed\n");
     return ret_value;
   }
 
   ret = SCardListReaders(scard_context, NULL, readers, &len);
   if (ret != SCARD_S_SUCCESS) {
-    printf("CloudIoTManagement SCARD ERROR: SCardListReaders() 2: %s", pcsc_stringify_error(ret));
+    printf("CloudIoTManagement SCARD ERROR: SCardListReaders() 2: %s\n", pcsc_stringify_error(ret));
     goto clean_exit;
   }
   if (len < 3) {
-    printf("CloudIoTManagement SCARD INFO: No smart card readers available.");
+    printf("CloudIoTManagement SCARD INFO: No smart card readers available.\n");
     return ret_value;
   }
 
   /* readers: NULL-separated list of reader names, and terminating NULL */
   pos = 0;
   while (pos < len - 1) {
-    printf("CloudIoTManagement SCARD INFO: Available Card Reader: %s", &readers[pos]);
+    printf("CloudIoTManagement SCARD INFO: Available Card Reader: %s\n", &readers[pos]);
     while (readers[pos] != '\0' && pos < len) {
       pos++;
     }
@@ -1182,81 +1217,44 @@ int CloudIoTManagement::scard::init(usim_args_t* args)
   pos          = 0;
 
   // If no reader specified, test all available readers for SIM cards. Otherwise consider specified reader only.
-  if (args->reader.length() == 0) {
-    while (pos < len && !reader_found) {
-      printf("CloudIoTManagement SCARD INFO: Trying Card Reader: %s", &readers[pos]);
-      // Connect to card
-      ret = SCardConnect(scard_context,
-                         &readers[pos],
-                         SCARD_SHARE_SHARED,
-                         SCARD_PROTOCOL_T0 | SCARD_PROTOCOL_T1,
-                         &scard_handle,
-                         &scard_protocol);
-      if (ret == SCARD_S_SUCCESS) {
-        reader_found = true;
-      } else {
-        if (ret == (long)SCARD_E_NO_SMARTCARD) {
-          printf("CloudIoTManagement SCARD ERROR: No smart card inserted.");
-        } else {
-          printf("CloudIoTManagement SCARD ERROR: %s", pcsc_stringify_error(ret));
-        }
-        printf("CloudIoTManagement SCARD INFO: Failed to use Card Reader: %s", &readers[pos]);
-
-        // proceed to next reader
-        while (pos < len && readers[pos] != '\0') {
-          pos++;
-        }
-        pos++; // skip separator
-      }
-    }
-  } else {
-    // card reader specified in config. search for this reader.
-    while (pos < len && !reader_found) {
-      if (strcmp(&readers[pos], args->reader.c_str()) == 0) {
-        reader_found = true;
-        printf("CloudIoTManagement SCARD INFO: Card Reader found: %s", args->reader.c_str());
-      } else {
-        // next reader
-        while (pos < len && readers[pos] != '\0') {
-          pos++;
-        }
-        pos++; // skip separator
-      }
-    }
-    if (!reader_found) {
-      printf("CloudIoTManagement SCARD ERROR: Cannot find reader: %s", args->reader.c_str());
+  while (pos < len && !reader_found) {
+    printf("CloudIoTManagement SCARD INFO: Trying Card Reader: %s\n", &readers[pos]);
+    // Connect to card
+    ret = SCardConnect(scard_context,
+                        &readers[pos],
+                        SCARD_SHARE_SHARED,
+                        SCARD_PROTOCOL_T0 | SCARD_PROTOCOL_T1,
+                        &scard_handle,
+                        &scard_protocol);
+    if (ret == SCARD_S_SUCCESS) {
+      reader_found = true;
     } else {
-      ret = SCardConnect(scard_context,
-                         &readers[pos],
-                         SCARD_SHARE_SHARED,
-                         SCARD_PROTOCOL_T0 | SCARD_PROTOCOL_T1,
-                         &scard_handle,
-                         &scard_protocol);
-      if (ret == SCARD_S_SUCCESS) {
-        // successfully connected to card
+      if (ret == (long)SCARD_E_NO_SMARTCARD) {
+        printf("CloudIoTManagement SCARD ERROR: No smart card inserted.\n");
       } else {
-        if (ret == (long)SCARD_E_NO_SMARTCARD) {
-          printf("CloudIoTManagement SCARD ERROR: No smart card inserted.");
-        } else {
-          printf("CloudIoTManagement SCARD ERROR: %s", pcsc_stringify_error(ret));
-        }
-
-        printf("CloudIoTManagement SCARD INFO: Failed to use Card Reader: %s", args->reader.c_str());
+        printf("CloudIoTManagement SCARD ERROR: %s\n", pcsc_stringify_error(ret));
       }
+      printf("CloudIoTManagement SCARD INFO: Failed to use Card Reader: %s\n", &readers[pos]);
+
+      // proceed to next reader
+      while (pos < len && readers[pos] != '\0') {
+        pos++;
+      }
+      pos++; // skip separator
     }
   }
 
   free(readers);
   readers = NULL;
 
-  printf("CloudIoTManagement SCARD INFO: Card=0x%x active_protocol=%lu (%s)",
+  printf("CloudIoTManagement SCARD INFO: Card=0x%x active_protocol=%lu (%s)\n",
               (unsigned int)scard_handle,
               (unsigned long)scard_protocol,
               scard_protocol == SCARD_PROTOCOL_T0 ? "T0" : "T1");
 
   ret = SCardBeginTransaction(scard_handle);
   if (ret != SCARD_S_SUCCESS) {
-    printf("CloudIoTManagement SCARD ERROR: %s", pcsc_stringify_error(ret));
+    printf("CloudIoTManagement SCARD ERROR: %s\n", pcsc_stringify_error(ret));
     goto clean_exit;
   }
 
@@ -1337,11 +1335,11 @@ int CloudIoTManagement::scard::init(usim_args_t* args)
 //   }
 // #else
   pin1_needed = false;
-#endif
+// #endif
 
   ret = SCardEndTransaction(scard_handle, SCARD_LEAVE_CARD);
   if (ret != SCARD_S_SUCCESS) {
-    printf("CloudIoTManagement SCARD DEBUG: SCARD: Could not end transaction: 0x%x", (unsigned int)ret);
+    printf("CloudIoTManagement SCARD DEBUG: SCARD: Could not end transaction: 0x%x\n", (unsigned int)ret);
     goto clean_exit;
   }
 
@@ -1442,7 +1440,8 @@ long CloudIoTManagement::scard::transmit(unsigned char* _send, size_t send_len, 
   long          ret;
   unsigned long rlen;
 
-  logger.debug(_send, send_len, "SCARD: scard_transmit: send");
+  //logger.debug(_send, send_len, "SCARD: scard_transmit: send");
+  printf("CloudIoTManagement SCARD DEBUG: SCARD: scard_transmit: send, %lu bytes\n", send_len);
   rlen      = *recv_len;
   ret       = SCardTransmit(scard_handle,
                       scard_protocol == SCARD_PROTOCOL_T1 ? SCARD_PCI_T1 : SCARD_PCI_T0,
@@ -1453,10 +1452,18 @@ long CloudIoTManagement::scard::transmit(unsigned char* _send, size_t send_len, 
                       &rlen);
   *recv_len = rlen;
   if (ret == SCARD_S_SUCCESS) {
-    logger.debug(_recv, rlen, "SCARD: SCardTransmit: recv");
+    //logger.debug(_recv, rlen, "SCARD: SCardTransmit: recv");
+    printf("CloudIoTManagement SCARD DEBUG: SCARD: scard_transmit: recv, %lu bytes\n", rlen);
   } else {
-    printf("CloudIoTManagement SCARD ERROR: SCARD: SCardTransmit failed %s", pcsc_stringify_error(ret));
+    printf("CloudIoTManagement SCARD ERROR: SCARD: SCardTransmit failed %s\n", pcsc_stringify_error(ret));
   }
+
+  printf("CloudIoTManagement SCARD DEBUG: Received %lu bytes: ", rlen);
+  for (size_t i = 0; i < rlen; i++) {
+    printf("%u ", _recv[i]);
+  }
+  printf("\n");
+
   return ret;
 }
 
@@ -1888,16 +1895,16 @@ void CloudIoTManagement::scard::deinit()
 {
   long ret;
 
-  printf("CloudIoTManagement SCARD DEBUG: SCARD: deinitializing smart card interface");
+  printf("CloudIoTManagement SCARD DEBUG: SCARD: deinitializing smart card interface\n");
 
   ret = SCardDisconnect(scard_handle, SCARD_UNPOWER_CARD);
   if (ret != SCARD_S_SUCCESS) {
-    printf("CloudIoTManagement SCARD DEBUG: SCARD: Failed to disconnect smart card (err=%ld)", ret);
+    printf("CloudIoTManagement SCARD DEBUG: SCARD: Failed to disconnect smart card (err=%ld)\n", ret);
   }
 
   ret = SCardReleaseContext(scard_context);
   if (ret != SCARD_S_SUCCESS) {
-    printf("CloudIoTManagement SCARD DEBUG: Failed to release smart card context (err=%ld)", ret);
+    printf("CloudIoTManagement SCARD DEBUG: Failed to release smart card context (err=%ld)\n", ret);
   }
 }
 
