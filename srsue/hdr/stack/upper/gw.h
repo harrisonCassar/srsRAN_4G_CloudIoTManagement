@@ -129,6 +129,123 @@ public:
     uint16_t millisecond;
   };
 
+/*******************************ADAPTED FROM `pcsc_usim.h`***********************************/
+  class scard
+  {
+  public:
+    /*explicit*/ scard()/*srslog::basic_logger& logger) : logger(logger)*/ {}
+    ~scard(){};
+
+    int  init();
+    void deinit();
+
+    // int select_file(unsigned short file_id, unsigned char* buf, size_t* buf_len);
+    // int _select_file(unsigned short file_id,
+    //                  unsigned char* buf,
+    //                  size_t*        buf_len,
+    //                  sim_types_t    sim_type,
+    //                  unsigned char* aid,
+    //                  size_t         aidlen);
+
+    long transmit(unsigned char* _send, size_t send_len, unsigned char* _recv, size_t* recv_len);
+
+    // int get_aid(unsigned char* aid, size_t maxlen);
+    // int get_record_len(unsigned char recnum, unsigned char mode);
+    // int read_record(unsigned char* data, size_t len, unsigned char recnum, unsigned char mode);
+    // int get_imsi(char* imsi, size_t* len);
+    // int parse_fsp_templ(unsigned char* buf, size_t buf_len, int* ps_do, int* file_len);
+    // int read_file(unsigned char* data, size_t len);
+    // int get_mnc_len();
+    // int umts_auth(const unsigned char* _rand,
+    //               const unsigned char* autn,
+    //               unsigned char*       res,
+    //               int*                 res_len,
+    //               unsigned char*       ik,
+    //               unsigned char*       ck,
+    //               unsigned char*       auts);
+    // int pin_needed(unsigned char* hdr, size_t hlen);
+    // int verify_pin(const char* pin);
+    // int get_pin_retry_counter();
+
+  private:
+/* See ETSI GSM 11.11 and ETSI TS 102 221 for details.
+ * SIM commands:
+ * Command APDU: CLA INS P1 P2 P3 Data
+ *   CLA (class of instruction): A0 for GSM, 00 for USIM
+ *   INS (instruction)
+ *   P1 P2 P3 (parameters, P3 = length of Data)
+ * Response APDU: Data SW1 SW2
+ *   SW1 SW2 (Status words)
+ */
+/* Relevant CloudIoTManagement SIM commands. */
+#define SIM_CMD_FETCH               0x00, 0xf3, 0x00, 0x00, 0x11
+#define SIM_CMD_TERMINAL_RESPONSE   0x00, 0xf4, 0x00, 0x00
+#define SIM_CMD_CS_RESPONSE         0x00, 0xf2, 0x00, 0x00
+
+// #define SIM_CMD_RUN_GSM_ALG 0xa0, 0x88, 0x00, 0x00, 0x10
+// #define SIM_CMD_GET_RESPONSE 0xa0, 0xc0, 0x00, 0x00
+// #define SIM_CMD_READ_BIN 0xa0, 0xb0, 0x00, 0x00
+// #define SIM_CMD_READ_RECORD 0xa0, 0xb2, 0x00, 0x00
+// #define SIM_CMD_VERIFY_CHV1 0xa0, 0x20, 0x00, 0x01, 0x08
+
+// /* USIM commands */
+// #define USIM_CLA 0x00
+// #define USIM_CMD_RUN_UMTS_ALG 0x00, 0x88, 0x00, 0x81, 0x22
+// #define USIM_CMD_GET_RESPONSE 0x00, 0xc0, 0x00, 0x00
+
+// #define SIM_RECORD_MODE_ABSOLUTE 0x04
+
+// #define USIM_FSP_TEMPL_TAG 0x62
+
+// #define USIM_TLV_FILE_DESC 0x82
+// #define USIM_TLV_FILE_ID 0x83
+// #define USIM_TLV_DF_NAME 0x84
+// #define USIM_TLV_PROPR_INFO 0xA5
+// #define USIM_TLV_LIFE_CYCLE_STATUS 0x8A
+// #define USIM_TLV_FILE_SIZE 0x80
+// #define USIM_TLV_TOTAL_FILE_SIZE 0x81
+// #define USIM_TLV_PIN_STATUS_TEMPLATE 0xC6
+// #define USIM_TLV_SHORT_FILE_ID 0x88
+// #define USIM_TLV_SECURITY_ATTR_8B 0x8B
+// #define USIM_TLV_SECURITY_ATTR_8C 0x8C
+// #define USIM_TLV_SECURITY_ATTR_AB 0xAB
+
+// #define USIM_PS_DO_TAG 0x90
+
+// /* GSM files
+//  * File type in first octet:
+//  * 3F = Master File
+//  * 7F = Dedicated File
+//  * 2F = Elementary File under the Master File
+//  * 6F = Elementary File under a Dedicated File
+//  */
+// #define SCARD_FILE_MF 0x3F00
+// #define SCARD_FILE_GSM_DF 0x7F20
+// #define SCARD_FILE_UMTS_DF 0x7F50
+// #define SCARD_FILE_GSM_EF_IMSI 0x6F07
+// #define SCARD_FILE_GSM_EF_AD 0x6FAD
+// #define SCARD_FILE_EF_DIR 0x2F00
+// #define SCARD_FILE_EF_ICCID 0x2FE2
+// #define SCARD_FILE_EF_CK 0x6FE1
+// #define SCARD_FILE_EF_IK 0x6FE2
+
+// #define SCARD_CHV1_OFFSET 13
+// #define SCARD_CHV1_FLAG 0x80
+
+    SCARDCONTEXT          scard_context;
+    SCARDHANDLE           scard_handle;
+    long unsigned         scard_protocol;
+    //sim_types_t           sim_type;
+    bool                  pin1_needed;
+    // srslog::basic_logger& logger;
+  };
+
+  /**
+   * @brief Object representing the interface with the smart card.
+   */
+  scard sc;
+/*******************************ADAPTED FROM `pcsc_usim.h`***********************************/
+
   /**
    * @brief Structure representing the Modem packet used in the custom
    * CloudIoTManagement protocol.
@@ -155,27 +272,54 @@ public:
     ModemPacket(Flow _flow) : flow(_flow) {}
 
     /**
-     * @brief Serializes the packet into a sequence of bytes, placing these
-     * bytes into the specified buffer owned by the caller.
-     *
-     * NOTE: This buffer must be at LEAST the length required for the packet of
-     * interest, which can be determined by the `get_serialized_length` method.
-     *
-     * @param output_buffer Buffer to hold serialized bytes.
-     * @param buffer_length Size of the specified buffer to hold serialized bytes.
-     */
-    virtual void serialize(uint8_t *output_buffer, size_t buffer_length) = 0;
-
-    /**
-     * @brief Specifies the length of the serialized packet, which can be used
-     * to properly size buffers accordingly.
-     */
-    virtual size_t get_serialized_length() const = 0;
-
-    /**
      * @brief Virtual destructor to enable inheritance.
      */
     virtual ~ModemPacket() {}
+
+    /**
+     * @brief Serializes the packet, formats the bytes into the proper APDU,
+     * sends the APDU to the specified SIM card, and sends any follow-up APDU
+     * commands to receive any expected data from the SIM card, placing any
+     * response bytes into the buffer owned/provided by the caller.
+     *
+     * NOTE: This response buffer must be at LEAST the length required for the
+     * expected response for the command of interest.
+     *
+     * @param sc Reference to the SIM card to send the formatted APDU to.
+     * @param response_buffer Buffer to hold response bytes.
+     * @param buffer_length Reference to size of the specified buffer to hold
+     * response bytes. Updated to the number of bytes received/populated in
+     * the buffer.
+     *
+     * @returns SRSRAN_SUCCESS on success, SRSRAN_ERROR on failure.
+     */
+    virtual long send_and_recv_sim(CloudIoTManagement::scard &sc, uint8_t *response_buffer, size_t &buffer_length) = 0;
+
+    /**
+     * @brief Serializes the packet into a sequence of bytes, and places into
+     * the specified buffer owned/provided by the caller.
+     *
+     * NOTE: This buffer's size must be at LEAST the length of the serialized
+     * byte sequence for the packet. For dynamically-sized buffers, this can
+     * be obtained via `get_max_serialized_length`.
+     *
+     * @param serialized_buffer Buffer to hold the serialized byte sequence.
+     * @param buffer_length Size of the specified buffer to hold the serialized
+     * byte sequence.
+     *
+     * @returns size_t representing length of the serialized byte sequence.
+     */
+    virtual void serialize_packet(uint8_t *serialized_buffer, size_t &buffer_length) const = 0;
+
+    /**
+     * @brief Gets the length of the packet's serialized byte sequence, which
+     * can be used to appropiately size dynamically-sized buffers used to hold
+     * the serialized packet (done with `serialize_packet`).
+     *
+     * @returns size_t representing the length of the packet's serialized byte
+     * sequence.
+    */
+    virtual size_t get_max_serialized_length() const = 0;
 
     Flow flow;
   };
@@ -210,6 +354,51 @@ public:
      * @brief Virtual destructor to enable inheritance.
      */
     virtual ~IoTPacket() {}
+
+    /**
+     * @brief Serializes the packet, formats the bytes into the proper APDU,
+     * sends the APDU to the specified SIM card, and sends any follow-up APDU
+     * commands to receive any expected data from the SIM card, placing any
+     * response bytes into the buffer owned/provided by the caller.
+     *
+     * NOTE: This response buffer must be at LEAST the length required for the
+     * expected response for the command of interest.
+     *
+     * @param sc Reference to the SIM card to send the formatted APDU to.
+     * @param response_buffer Buffer to hold response bytes.
+     * @param buffer_length Reference to size of the specified buffer to hold
+     * response bytes. Updated to the number of bytes received/populated in
+     * the buffer.
+     *
+     * @returns SRSRAN_SUCCESS on success, SRSRAN_ERROR on failure.
+     */
+    virtual long send_and_recv_sim(CloudIoTManagement::scard &sc, uint8_t *response_buffer, size_t &buffer_length) = 0;
+
+    /**
+     * @brief Serializes the packet into a sequence of bytes, and places into
+     * the specified buffer owned/provided by the caller.
+     *
+     * NOTE: This buffer's size must be at LEAST the length of the serialized
+     * byte sequence for the packet. For dynamically-sized buffers, this can
+     * be obtained via `get_max_serialized_length`.
+     *
+     * @param serialized_buffer Buffer to hold the serialized byte sequence.
+     * @param buffer_length Size of the specified buffer to hold the serialized
+     * byte sequence.
+     *
+     * @returns size_t representing length of the serialized byte sequence.
+     */
+    virtual void serialize_packet(uint8_t *serialized_buffer, size_t &buffer_length) const = 0;
+
+    /**
+     * @brief Gets the length of the packet's serialized byte sequence, which
+     * can be used to appropiately size dynamically-sized buffers used to hold
+     * the serialized packet (done with `serialize_packet`).
+     *
+     * @returns size_t representing the length of the packet's serialized byte
+     * sequence.
+    */
+    virtual size_t get_max_serialized_length() const = 0;
 
     Topic topic;
   };
@@ -256,6 +445,51 @@ public:
      */
     virtual ~CarrierSwitchPacket() {}
 
+    /**
+     * @brief Serializes the packet, formats the bytes into the proper APDU,
+     * sends the APDU to the specified SIM card, and sends any follow-up APDU
+     * commands to receive any expected data from the SIM card, placing any
+     * response bytes into the buffer owned/provided by the caller.
+     *
+     * NOTE: This response buffer must be at LEAST the length required for the
+     * expected response for the command of interest.
+     *
+     * @param sc Reference to the SIM card to send the formatted APDU to.
+     * @param response_buffer Buffer to hold response bytes.
+     * @param buffer_length Reference to size of the specified buffer to hold
+     * response bytes. Updated to the number of bytes received/populated in
+     * the buffer.
+     *
+     * @returns SRSRAN_SUCCESS on success, SRSRAN_ERROR on failure.
+     */
+    virtual long send_and_recv_sim(CloudIoTManagement::scard &sc, uint8_t *response_buffer, size_t &buffer_length) = 0;
+
+    /**
+     * @brief Serializes the packet into a sequence of bytes, and places into
+     * the specified buffer owned/provided by the caller.
+     *
+     * NOTE: This buffer's size must be at LEAST the length of the serialized
+     * byte sequence for the packet. For dynamically-sized buffers, this can
+     * be obtained via `get_max_serialized_length`.
+     *
+     * @param serialized_buffer Buffer to hold the serialized byte sequence.
+     * @param buffer_length Size of the specified buffer to hold the serialized
+     * byte sequence.
+     *
+     * @returns size_t representing length of the serialized byte sequence.
+     */
+    virtual void serialize_packet(uint8_t *serialized_buffer, size_t &buffer_length) const = 0;
+
+    /**
+     * @brief Gets the length of the packet's serialized byte sequence, which
+     * can be used to appropiately size dynamically-sized buffers used to hold
+     * the serialized packet (done with `serialize_packet`).
+     *
+     * @returns size_t representing the length of the packet's serialized byte
+     * sequence.
+    */
+    virtual size_t get_max_serialized_length() const = 0;
+
     Topic topic;
   };
 
@@ -291,7 +525,7 @@ public:
     IoTDataPacket() : IoTPacket(IoTPacket::Topic::DATA) {}
     IoTDataPacket(uint32_t _device_id,
                   Timestamp _timestamp,
-                  uint32_t _data_length,
+                  uint8_t _data_length,
                   uint8_t *_data) : device_id(_device_id),
                                     timestamp(_timestamp),
                                     data_length(_data_length),
@@ -303,26 +537,53 @@ public:
                                     }
 
     /**
-     * @brief Serializes the packet into a sequence of bytes, placing these
-     * bytes into the specified buffer owned by the caller.
+     * @brief Serializes the packet, formats the bytes into the proper APDU,
+     * sends the APDU to the specified SIM card, and sends any follow-up APDU
+     * commands to receive any expected data from the SIM card, placing any
+     * response bytes into the buffer owned/provided by the caller.
      *
-     * NOTE: This buffer must be at LEAST the length required for the packet of
-     * interest, which can be determined by the `get_serialized_length` method.
+     * NOTE: This response buffer must be at LEAST the length required for the
+     * expected response for the command of interest (46 bytes is the MAX size).
      *
-     * @param output_buffer Buffer to hold serialized bytes.
-     * @param buffer_length Size of the specified buffer to hold serialized bytes.
+     * @param sc Reference to the SIM card to send the formatted APDU to.
+     * @param response_buffer Buffer to hold response bytes.
+     * @param buffer_length Reference to size of the specified buffer to hold
+     * response bytes. Updated to the number of bytes received/populated in
+     * the buffer.
+     *
+     * @returns SRSRAN_SUCCESS on success, SRSRAN_ERROR on failure.
      */
-    virtual void serialize(uint8_t *output_buffer, size_t buffer_length) override;
+    virtual long send_and_recv_sim(CloudIoTManagement::scard &sc, uint8_t *response_buffer, size_t &buffer_length) override;
 
     /**
-     * @brief Specifies the length of the serialized packet, which can be used
-     * to properly size buffers accordingly.
+     * @brief Serializes the packet into a sequence of bytes, and places into
+     * the specified buffer owned/provided by the caller.
+     *
+     * NOTE: This buffer's size must be at LEAST the length of the serialized
+     * byte sequence for the packet. For dynamically-sized buffers, this can
+     * be obtained via `get_max_serialized_length`.
+     *
+     * @param serialized_buffer Buffer to hold the serialized byte sequence.
+     * @param buffer_length Size of the specified buffer to hold the serialized
+     * byte sequence.
+     *
+     * @returns size_t representing length of the serialized byte sequence.
      */
-    virtual size_t get_serialized_length() const override;
+    virtual void serialize_packet(uint8_t *serialized_buffer, size_t &buffer_length) const override;
+
+    /**
+     * @brief Gets the length of the packet's serialized byte sequence, which
+     * can be used to appropiately size dynamically-sized buffers used to hold
+     * the serialized packet (done with `serialize_packet`).
+     *
+     * @returns size_t representing the length of the packet's serialized byte
+     * sequence.
+    */
+    virtual size_t get_max_serialized_length() const override;
 
     uint32_t device_id;
     Timestamp timestamp;
-    uint32_t data_length;
+    uint8_t data_length;
     uint8_t data[CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_DATA_FIELD_SIZE_BYTES_MAXIMUM];
   };
 
@@ -354,22 +615,49 @@ public:
                                       IoTPacket(IoTPacket::Topic::STATUS) {}
 
     /**
-     * @brief Serializes the packet into a sequence of bytes, placing these
-     * bytes into the specified buffer owned by the caller.
+     * @brief Serializes the packet, formats the bytes into the proper APDU,
+     * sends the APDU to the specified SIM card, and sends any follow-up APDU
+     * commands to receive any expected data from the SIM card, placing any
+     * response bytes into the buffer owned/provided by the caller.
      *
-     * NOTE: This buffer must be at LEAST the length required for the packet of
-     * interest, which can be determined by the `get_serialized_length` method.
+     * NOTE: This response buffer must be at LEAST the length required for the
+     * expected response for the command of interest (2 bytes).
      *
-     * @param output_buffer Buffer to hold serialized bytes.
-     * @param buffer_length Size of the specified buffer to hold serialized bytes.
+     * @param sc Reference to the SIM card to send the formatted APDU to.
+     * @param response_buffer Buffer to hold response bytes.
+     * @param buffer_length Reference to size of the specified buffer to hold
+     * response bytes. Updated to the number of bytes received/populated in
+     * the buffer.
+     *
+     * @returns SRSRAN_SUCCESS on success, SRSRAN_ERROR on failure.
      */
-    virtual void serialize(uint8_t *output_buffer, size_t buffer_length) override;
+    virtual long send_and_recv_sim(CloudIoTManagement::scard &sc, uint8_t *response_buffer, size_t &buffer_length) override;
 
     /**
-     * @brief Specifies the length of the serialized packet, which can be used
-     * to properly size buffers accordingly.
+     * @brief Serializes the packet into a sequence of bytes, and places into
+     * the specified buffer owned/provided by the caller.
+     *
+     * NOTE: This buffer's size must be at LEAST the length of the serialized
+     * byte sequence for the packet. For dynamically-sized buffers, this can
+     * be obtained via `get_max_serialized_length`.
+     *
+     * @param serialized_buffer Buffer to hold the serialized byte sequence.
+     * @param buffer_length Size of the specified buffer to hold the serialized
+     * byte sequence.
+     *
+     * @returns size_t representing length of the serialized byte sequence.
      */
-    virtual size_t get_serialized_length() const override;
+    virtual void serialize_packet(uint8_t *serialized_buffer, size_t &buffer_length) const override;
+
+    /**
+     * @brief Gets the length of the packet's serialized byte sequence, which
+     * can be used to appropiately size dynamically-sized buffers used to hold
+     * the serialized packet (done with `serialize_packet`).
+     *
+     * @returns size_t representing the length of the packet's serialized byte
+     * sequence.
+    */
+    virtual size_t get_max_serialized_length() const override;
 
     Status status;
   };
@@ -402,22 +690,49 @@ public:
                                                         CarrierSwitchPacket(CarrierSwitchPacket::Topic::PERFORM) {}
 
     /**
-     * @brief Serializes the packet into a sequence of bytes, placing these
-     * bytes into the specified buffer owned by the caller.
+     * @brief Serializes the packet, formats the bytes into the proper APDU,
+     * sends the APDU to the specified SIM card, and sends any follow-up APDU
+     * commands to receive any expected data from the SIM card, placing any
+     * response bytes into the buffer owned/provided by the caller.
      *
-     * NOTE: This buffer must be at LEAST the length required for the packet of
-     * interest, which can be determined by the `get_serialized_length` method.
+     * NOTE: This response buffer must be at LEAST the length required for the
+     * expected response for the command of interest (2 bytes).
      *
-     * @param output_buffer Buffer to hold serialized bytes.
-     * @param buffer_length Size of the specified buffer to hold serialized bytes.
+     * @param sc Reference to the SIM card to send the formatted APDU to.
+     * @param response_buffer Buffer to hold response bytes.
+     * @param buffer_length Reference to size of the specified buffer to hold
+     * response bytes. Updated to the number of bytes received/populated in
+     * the buffer.
+     *
+     * @returns SRSRAN_SUCCESS on success, SRSRAN_ERROR on failure.
      */
-    virtual void serialize(uint8_t *output_buffer, size_t buffer_length) override;
+    virtual long send_and_recv_sim(CloudIoTManagement::scard &sc, uint8_t *response_buffer, size_t &buffer_length) override;
 
     /**
-     * @brief Specifies the length of the serialized packet, which can be used
-     * to properly size buffers accordingly.
+     * @brief Serializes the packet into a sequence of bytes, and places into
+     * the specified buffer owned/provided by the caller.
+     *
+     * NOTE: This buffer's size must be at LEAST the length of the serialized
+     * byte sequence for the packet. For dynamically-sized buffers, this can
+     * be obtained via `get_max_serialized_length`.
+     *
+     * @param serialized_buffer Buffer to hold the serialized byte sequence.
+     * @param buffer_length Size of the specified buffer to hold the serialized
+     * byte sequence.
+     *
+     * @returns size_t representing length of the serialized byte sequence.
      */
-    virtual size_t get_serialized_length() const override;
+    virtual void serialize_packet(uint8_t *serialized_buffer, size_t &buffer_length) const override;
+
+    /**
+     * @brief Gets the length of the packet's serialized byte sequence, which
+     * can be used to appropiately size dynamically-sized buffers used to hold
+     * the serialized packet (done with `serialize_packet`).
+     *
+     * @returns size_t representing the length of the packet's serialized byte
+     * sequence.
+    */
+    virtual size_t get_max_serialized_length() const override;
 
     CarrierID carrier_id;
   };
@@ -456,22 +771,49 @@ public:
                                                     CarrierSwitchPacket(CarrierSwitchPacket::Topic::ACK) {}
 
     /**
-     * @brief Serializes the packet into a sequence of bytes, placing these
-     * bytes into the specified buffer owned by the caller.
+     * @brief Serializes the packet, formats the bytes into the proper APDU,
+     * sends the APDU to the specified SIM card, and sends any follow-up APDU
+     * commands to receive any expected data from the SIM card, placing any
+     * response bytes into the buffer owned/provided by the caller.
      *
-     * NOTE: This buffer must be at LEAST the length required for the packet of
-     * interest, which can be determined by the `get_serialized_length` method.
+     * NOTE: This response buffer must be at LEAST the length required for the
+     * expected response for the command of interest (2 bytes).
      *
-     * @param output_buffer Buffer to hold serialized bytes.
-     * @param buffer_length Size of the specified buffer to hold serialized bytes.
+     * @param sc Reference to the SIM card to send the formatted APDU to.
+     * @param response_buffer Buffer to hold response bytes.
+     * @param buffer_length Reference to size of the specified buffer to hold
+     * response bytes. Updated to the number of bytes received/populated in
+     * the buffer.
+     *
+     * @returns SRSRAN_SUCCESS on success, SRSRAN_ERROR on failure.
      */
-    virtual void serialize(uint8_t *output_buffer, size_t buffer_length) override;
+    virtual long send_and_recv_sim(CloudIoTManagement::scard &sc, uint8_t *response_buffer, size_t &buffer_length) override;
 
     /**
-     * @brief Specifies the length of the serialized packet, which can be used
-     * to properly size buffers accordingly.
+     * @brief Serializes the packet into a sequence of bytes, and places into
+     * the specified buffer owned/provided by the caller.
+     *
+     * NOTE: This buffer's size must be at LEAST the length of the serialized
+     * byte sequence for the packet. For dynamically-sized buffers, this can
+     * be obtained via `get_max_serialized_length`.
+     *
+     * @param serialized_buffer Buffer to hold the serialized byte sequence.
+     * @param buffer_length Size of the specified buffer to hold the serialized
+     * byte sequence.
+     * 
+     * @returns size_t representing length of the serialized byte sequence.
      */
-    virtual size_t get_serialized_length() const override;
+    virtual void serialize_packet(uint8_t *serialized_buffer, size_t &buffer_length) const override;
+
+    /**
+     * @brief Gets the length of the packet's serialized byte sequence, which
+     * can be used to appropiately size dynamically-sized buffers used to hold
+     * the serialized packet (done with `serialize_packet`).
+     *
+     * @returns size_t representing the length of the packet's serialized byte
+     * sequence.
+    */
+    virtual size_t get_max_serialized_length() const override;
 
     Status status;
     CarrierID carrier_id;
@@ -535,159 +877,7 @@ public:
    */
   void handle_packet(const uint8_t *pdu_buffer, size_t num_bytes);
 
-  /**
-   * @brief Constructs/formats the associated APDU message for the specified
-   * Modem packet, and transmits it to the SIM card.
-   *
-   * NOTE: The `init` method must be called to initialize the
-   * CloudIoTManagement object before invoking this method.
-   *
-   * @param packet const reference to the Modem packet to be sent.
-   */
-  void send_to_sim(const ModemPacket &packet);
-
-  /**
-   * @brief Handle SIM response, which involves decoding the APDU message,
-   * constructing the corresponding Modem packet (as defined by the
-   * CloudIoTManagement custom protocol), and sending it to our cloud UDP
-   * server.
-   */
-  void handle_sim_response();
-
 private:
-
-/*******************************ADAPTED FROM `pcsc_usim.h`***********************************/
-  class scard
-  {
-  public:
-    /*explicit*/ scard()/*srslog::basic_logger& logger) : logger(logger)*/ {}
-    ~scard(){};
-
-    int  init();
-    void deinit();
-
-    // int select_file(unsigned short file_id, unsigned char* buf, size_t* buf_len);
-    // int _select_file(unsigned short file_id,
-    //                  unsigned char* buf,
-    //                  size_t*        buf_len,
-    //                  sim_types_t    sim_type,
-    //                  unsigned char* aid,
-    //                  size_t         aidlen);
-
-    long transmit(unsigned char* _send, size_t send_len, unsigned char* _recv, size_t* recv_len);
-
-    // int get_aid(unsigned char* aid, size_t maxlen);
-    // int get_record_len(unsigned char recnum, unsigned char mode);
-    // int read_record(unsigned char* data, size_t len, unsigned char recnum, unsigned char mode);
-    // int get_imsi(char* imsi, size_t* len);
-    // int parse_fsp_templ(unsigned char* buf, size_t buf_len, int* ps_do, int* file_len);
-    // int read_file(unsigned char* data, size_t len);
-    // int get_mnc_len();
-    // int umts_auth(const unsigned char* _rand,
-    //               const unsigned char* autn,
-    //               unsigned char*       res,
-    //               int*                 res_len,
-    //               unsigned char*       ik,
-    //               unsigned char*       ck,
-    //               unsigned char*       auts);
-    // int pin_needed(unsigned char* hdr, size_t hlen);
-    // int verify_pin(const char* pin);
-    // int get_pin_retry_counter();
-
-  private:
-/* See ETSI GSM 11.11 and ETSI TS 102 221 for details.
- * SIM commands:
- * Command APDU: CLA INS P1 P2 P3 Data
- *   CLA (class of instruction): A0 for GSM, 00 for USIM
- *   INS (instruction)
- *   P1 P2 P3 (parameters, P3 = length of Data)
- * Response APDU: Data SW1 SW2
- *   SW1 SW2 (Status words)
- * Commands (INS P1 P2 P3):
- *   SELECT: A4 00 00 02 <file_id, 2 bytes>
- *   GET RESPONSE: C0 00 00 <len>
- *   RUN GSM ALG: 88 00 00 00 <RAND len = 10>
- *   RUN UMTS ALG: 88 00 81 <len=0x22> data: 0x10 | RAND | 0x10 | AUTN
- *	P1 = ID of alg in card
- *	P2 = ID of secret key
- *   READ BINARY: B0 <offset high> <offset low> <len>
- *   READ RECORD: B2 <record number> <mode> <len>
- *	P2 (mode) = '02' (next record), '03' (previous record),
- *		    '04' (absolute mode)
- *   VERIFY CHV: 20 00 <CHV number> 08
- *   CHANGE CHV: 24 00 <CHV number> 10
- *   DISABLE CHV: 26 00 01 08
- *   ENABLE CHV: 28 00 01 08
- *   UNBLOCK CHV: 2C 00 <00=CHV1, 02=CHV2> 10
- *   SLEEP: FA 00 00 00
- */
-
-/* GSM SIM commands */
-#define SIM_CMD_SELECT 0xa0, 0xa4, 0x00, 0x00, 0x02
-#define SIM_CMD_RUN_GSM_ALG 0xa0, 0x88, 0x00, 0x00, 0x10
-#define SIM_CMD_GET_RESPONSE 0xa0, 0xc0, 0x00, 0x00
-#define SIM_CMD_READ_BIN 0xa0, 0xb0, 0x00, 0x00
-#define SIM_CMD_READ_RECORD 0xa0, 0xb2, 0x00, 0x00
-#define SIM_CMD_VERIFY_CHV1 0xa0, 0x20, 0x00, 0x01, 0x08
-
-/* USIM commands */
-#define USIM_CLA 0x00
-#define USIM_CMD_RUN_UMTS_ALG 0x00, 0x88, 0x00, 0x81, 0x22
-#define USIM_CMD_GET_RESPONSE 0x00, 0xc0, 0x00, 0x00
-
-#define SIM_RECORD_MODE_ABSOLUTE 0x04
-
-#define USIM_FSP_TEMPL_TAG 0x62
-
-#define USIM_TLV_FILE_DESC 0x82
-#define USIM_TLV_FILE_ID 0x83
-#define USIM_TLV_DF_NAME 0x84
-#define USIM_TLV_PROPR_INFO 0xA5
-#define USIM_TLV_LIFE_CYCLE_STATUS 0x8A
-#define USIM_TLV_FILE_SIZE 0x80
-#define USIM_TLV_TOTAL_FILE_SIZE 0x81
-#define USIM_TLV_PIN_STATUS_TEMPLATE 0xC6
-#define USIM_TLV_SHORT_FILE_ID 0x88
-#define USIM_TLV_SECURITY_ATTR_8B 0x8B
-#define USIM_TLV_SECURITY_ATTR_8C 0x8C
-#define USIM_TLV_SECURITY_ATTR_AB 0xAB
-
-#define USIM_PS_DO_TAG 0x90
-
-/* GSM files
- * File type in first octet:
- * 3F = Master File
- * 7F = Dedicated File
- * 2F = Elementary File under the Master File
- * 6F = Elementary File under a Dedicated File
- */
-#define SCARD_FILE_MF 0x3F00
-#define SCARD_FILE_GSM_DF 0x7F20
-#define SCARD_FILE_UMTS_DF 0x7F50
-#define SCARD_FILE_GSM_EF_IMSI 0x6F07
-#define SCARD_FILE_GSM_EF_AD 0x6FAD
-#define SCARD_FILE_EF_DIR 0x2F00
-#define SCARD_FILE_EF_ICCID 0x2FE2
-#define SCARD_FILE_EF_CK 0x6FE1
-#define SCARD_FILE_EF_IK 0x6FE2
-
-#define SCARD_CHV1_OFFSET 13
-#define SCARD_CHV1_FLAG 0x80
-
-    SCARDCONTEXT          scard_context;
-    SCARDHANDLE           scard_handle;
-    long unsigned         scard_protocol;
-    //sim_types_t           sim_type;
-    bool                  pin1_needed;
-    // srslog::basic_logger& logger;
-  };
-
-  /**
-   * @brief Object representing the interface with the smart card.
-   */
-  scard sc;
-/*******************************ADAPTED FROM `pcsc_usim.h`***********************************/
-
   /**
    * @brief Decoder helper method for IoT Data Modem packets. Returns whether
    * or not the IoT Data packet was valid and/or decoding was successful. If
@@ -701,7 +891,7 @@ private:
    *
    * @returns true if the decoding was successful, false otherwise.
    */
-  bool decode_iot_data(const uint8_t *packet_buffer, IoTDataPacket &packet);
+  bool decode_iot_data(const uint8_t *packet_buffer, IoTDataPacket &packet) const;
 
   /**
    * @brief Decoder helper method for IoT Status Modem packets. Returns whether
@@ -716,7 +906,7 @@ private:
    *
    * @returns true if the decoding was successful, false otherwise.
    */
-  bool decode_iot_status(const uint8_t *packet_buffer, IoTStatusPacket &packet);
+  bool decode_iot_status(const uint8_t *packet_buffer, IoTStatusPacket &packet) const;
 
   /**
    * @brief Decoder helper method for Carrier Switch Perform Modem packets.
@@ -731,7 +921,7 @@ private:
    *
    * @returns true if the decoding was successful, false otherwise.
    */
-  bool decode_carrier_switch_perform(const uint8_t *packet_buffer, CarrierSwitchPerformPacket &packet);
+  bool decode_carrier_switch_perform(const uint8_t *packet_buffer, CarrierSwitchPerformPacket &packet) const;
 
   /**
    * @brief Decoder helper method for Carrier Switch ACK Modem packets.
@@ -746,18 +936,29 @@ private:
    *
    * @returns true if the decoding was successful, false otherwise.
    */
-  bool decode_carrier_switch_ack(const uint8_t *packet_buffer, CarrierSwitchACKPacket &packet);
+  bool decode_carrier_switch_ack(const uint8_t *packet_buffer, CarrierSwitchACKPacket &packet) const;
 
   /**
    * @brief Helper decoder for an 8-byte timestamp in the temporenc format.
    *
    * @param timestamp_buffer const pointer to the buffer holding the timestamp
    * to decode.
-   * @param num_bytes Size of buffer in bytes hollding the timestamp to decode.
+   * @param num_bytes Size of buffer in bytes holding the timestamp to decode.
    *
    * @return Timestamp object with decoded values.
    */
-  Timestamp decode_temporenc_timestamp(const uint8_t *timestamp_buffer, size_t num_bytes);
+  static Timestamp decode_temporenc_timestamp(const uint8_t *timestamp_buffer, size_t num_bytes);
+
+  /**
+   * @brief Helper encoder for an 8-byte timestamp in the temporenc format.
+   *
+   * @param timestamp const reference to a Timestamp object to encode.
+   * @param timestamp_buffer pointer to the buffer that will hold the encoded
+   * temporenc byte sequence.
+   * @param num_bytes Size of buffer in bytes holding the resultant encoded
+   * byte sequence.
+   */
+  static void encode_temporenc_timestamp(const Timestamp &timestamp, uint8_t *timestamp_buffer, size_t num_bytes);
 
   /**
    * @brief Helper to simply print out all fields of the specified IP packet.
@@ -765,7 +966,7 @@ private:
    * @param pdu_buffer Buffer holding PDU message.
    * @param num_bytes Length of PDU in bytes in specified buffer.
    */
-  void print_pdu(const uint8_t *pdu_buffer, size_t num_bytes);
+  static void print_pdu(const uint8_t *pdu_buffer, size_t num_bytes);
 
   /**
    * @brief Boolean flag determining whether or not debugging logs should be

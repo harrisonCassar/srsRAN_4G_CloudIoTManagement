@@ -780,35 +780,6 @@ int CloudIoTManagement::init() {
   /* Mark that we've now been initialized. */
   initialized = true;
 
-  // long          ret;
-  // size_t        len, rlen;
-
-  // unsigned char cmd[50] = {/* INS_TERMINAL_START header */ 0x00, 0xf4, 0x00, 0x00, /* sample carrier switch perform: length of packet, 0x10 for CARRIER SWITCH | PERFORM, 0x20 for CARRIER_ID of 0x2- (0x-0 forpadding) */ 0x02, 0x10, 0x20};
-  // int           cmdlen = 7;
-  // unsigned char resp[3];
-
-  // unsigned char get_ack_cmd[50] = {/* INS_CS_RESPONSE header */ 0x00, 0xf2, 0x00, 0x00, /* sample carrier switch ACK */ 0x11};
-  // int           get_ack_cmdlen = 5;
-  // unsigned char get_ack_resp[19];
-
-  // for (size_t i = 0; i < 6; i++) {
-  //   len = sizeof(resp);
-  //   ret = sc.transmit(cmd, cmdlen, resp, &len);
-  //   if (ret != SCARD_S_SUCCESS) {
-  //     printf("CloudIoTManagement SCARD ERROR: SCARD: SCardTransmit failed %s\n", pcsc_stringify_error(ret));
-  //     return -1;
-  //   }
-
-  //   len = sizeof(get_ack_resp);
-  //   ret = sc.transmit(get_ack_cmd, get_ack_cmdlen, get_ack_resp, &len);
-  //   if (ret != SCARD_S_SUCCESS) {
-  //     printf("CloudIoTManagement SCARD ERROR: SCARD: SCardTransmit failed %s\n", pcsc_stringify_error(ret));
-  //     return -1;
-  //   }
-
-  //   printf("==================================================\n");
-  // }
-
   printf("CloudIoTManagement: init success!\n");
 
   return SRSRAN_SUCCESS;
@@ -850,7 +821,14 @@ void CloudIoTManagement::handle_packet(const uint8_t *pdu_buffer, size_t num_byt
         printf("CloudIOTManagement: An error occured while decoding the IoT Data packet! Dropping packet/avoiding transmission to the SIM card...\n");
         return;
       }
-      send_to_sim(packet);
+
+      /* Send packet to SIM card, and buffer the response. */
+      uint8_t response_buffer[CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MAXIMUM];
+      size_t num_response_bytes = sizeof(response_buffer);
+      packet.send_and_recv_sim(sc, response_buffer, num_response_bytes);
+
+      /* Send response to our cloud subsystem. */
+      //TODO(hcassar): Implement.
     }
     else if (topic == IoTPacket::Topic::STATUS) {
       /* Confirm we have an expected number of bytes, and gracefully handle if not (return early). */
@@ -865,7 +843,14 @@ void CloudIoTManagement::handle_packet(const uint8_t *pdu_buffer, size_t num_byt
         printf("CloudIOTManagement: An error occured while decoding the IoT Status packet! Dropping packet/avoiding transmission to the SIM card...\n");
         return;
       }
-      send_to_sim(packet);
+
+      /* Send packet to SIM card, and buffer the response. */
+      uint8_t response_buffer[CLOUDIOTMANAGEMENT_IOT_STATUS_PACKET_SIZE_BYTES];
+      size_t num_response_bytes = sizeof(response_buffer);
+      packet.send_and_recv_sim(sc, response_buffer, num_response_bytes);
+
+      /* Send response to our cloud subsystem. */
+      //TODO(hcassar): Implement.
     }
     else {
       printf("CloudIOTManagement: Unrecognized TOPIC field (value: %u) for the IoT Modem packet.\n", topic);
@@ -887,7 +872,14 @@ void CloudIoTManagement::handle_packet(const uint8_t *pdu_buffer, size_t num_byt
         printf("CloudIOTManagement: An error occured while decoding the Carrier Switch Perform packet! Dropping packet/avoiding transmission to the SIM card...\n");
         return;
       }
-      send_to_sim(packet);
+
+      /* Send packet to SIM card, and buffer the response. */
+      uint8_t response_buffer[CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES];
+      size_t num_response_bytes = sizeof(response_buffer);
+      packet.send_and_recv_sim(sc, response_buffer, num_response_bytes);
+
+      /* Send response to our cloud subsystem. */
+      //TODO(hcassar): Implement.
     }
     else if (topic == CarrierSwitchPacket::Topic::ACK) {
       printf("CloudIOTManagement: Unexpectedly intercepted a Carrier Switch ACK packet which should not be sent to the SIM card. Dropping packet/avoiding transmission to the SIM card...\n");
@@ -902,35 +894,9 @@ void CloudIoTManagement::handle_packet(const uint8_t *pdu_buffer, size_t num_byt
     printf("CloudIOTManagement: Unrecognized FLOW field (value: %u) for the Modem packet.\n", flow);
     return;
   }
-
-  /*
-   * If we haven't returned early, then we've successfully sent a packet to the
-   * SIM card, and are expecting a response, so we handle it accordingly.
-   */
-  handle_sim_response();
 }
 
-void CloudIoTManagement::send_to_sim(const ModemPacket &packet) {
-  assert(initialized);
-
-  if (debug) {
-    printf("Sending Modem packet to SIM card...\n");
-  }
-
-  // TODO(hcassar): Implement.
-}
-
-void CloudIoTManagement::handle_sim_response() {
-  assert(initialized);
-
-  if (debug) {
-    printf("Receiving Modem packet from SIM card...\n");
-  }
-
-  // TODO(hcassar): Implement.
-}
-
-bool CloudIoTManagement::decode_iot_data(const uint8_t *packet_buffer, IoTDataPacket &packet) {
+bool CloudIoTManagement::decode_iot_data(const uint8_t *packet_buffer, IoTDataPacket &packet) const {
   assert(packet_buffer != nullptr);
 
   if (debug) {
@@ -945,10 +911,7 @@ bool CloudIoTManagement::decode_iot_data(const uint8_t *packet_buffer, IoTDataPa
                         (static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DEVICE_ID_FIELD + 2]) << 8) +
                         (static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DEVICE_ID_FIELD + 3]) << 0));
   Timestamp timestamp = decode_temporenc_timestamp(&packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_TIMESTAMP_FIELD], 8);
-  uint32_t data_length = ((static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DATA_LENGTH_FIELD + 0]) << 24) +
-                          (static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DATA_LENGTH_FIELD + 1]) << 16) +
-                          (static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DATA_LENGTH_FIELD + 2]) << 8) +
-                          (static_cast<uint32_t>(packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DATA_LENGTH_FIELD + 3]) << 0));
+  uint8_t data_length = packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DATA_LENGTH_FIELD];
   const uint8_t *data = &packet_buffer[IoTDataPacket::IOTDATAPACKET_OFFSET_DATA_FIELD];
 
   /* Sanity check header is correct. */
@@ -968,7 +931,7 @@ bool CloudIoTManagement::decode_iot_data(const uint8_t *packet_buffer, IoTDataPa
   return true;
 }
 
-bool CloudIoTManagement::decode_iot_status(const uint8_t *packet_buffer, IoTStatusPacket &packet) {
+bool CloudIoTManagement::decode_iot_status(const uint8_t *packet_buffer, IoTStatusPacket &packet) const {
   assert(packet_buffer != nullptr);
 
   if (debug) {
@@ -994,7 +957,7 @@ bool CloudIoTManagement::decode_iot_status(const uint8_t *packet_buffer, IoTStat
   return true;
 }
 
-bool CloudIoTManagement::decode_carrier_switch_perform(const uint8_t *packet_buffer, CarrierSwitchPerformPacket &packet) {
+bool CloudIoTManagement::decode_carrier_switch_perform(const uint8_t *packet_buffer, CarrierSwitchPerformPacket &packet) const {
   assert(packet_buffer != nullptr);
 
   if (debug) {
@@ -1024,7 +987,7 @@ bool CloudIoTManagement::decode_carrier_switch_perform(const uint8_t *packet_buf
   return true;
 }
 
-bool CloudIoTManagement::decode_carrier_switch_ack(const uint8_t *packet_buffer, CarrierSwitchACKPacket &packet) {
+bool CloudIoTManagement::decode_carrier_switch_ack(const uint8_t *packet_buffer, CarrierSwitchACKPacket &packet) const {
   assert(packet_buffer != nullptr);
 
   if (debug) {
@@ -1077,6 +1040,20 @@ CloudIoTManagement::Timestamp CloudIoTManagement::decode_temporenc_timestamp(con
   return timestamp;
 }
 
+void CloudIoTManagement::encode_temporenc_timestamp(const CloudIoTManagement::Timestamp &timestamp, uint8_t *timestamp_buffer, size_t num_bytes) {
+  assert(num_bytes == 8);
+
+  /* Encode Timestamp components into a temporenc-formatted byte sequence. */
+  timestamp_buffer[0] = static_cast<uint8_t>((timestamp.year & 0xFF00) >> 8);
+  timestamp_buffer[1] = static_cast<uint8_t>(timestamp.year & 0x00FF);
+  timestamp_buffer[2] = timestamp.month;
+  timestamp_buffer[3] = timestamp.day;
+  timestamp_buffer[4] = timestamp.hour;
+  timestamp_buffer[5] = timestamp.minute;
+  timestamp_buffer[6] = timestamp.second;
+  timestamp_buffer[7] = static_cast<uint8_t>((timestamp.millisecond & 0xFF00) >> 8);
+}
+
 void CloudIoTManagement::print_pdu(const uint8_t *pdu_buffer, size_t num_bytes) {
   assert(num_bytes >= PDU_HEADER_SIZE_BYTES);
   printf("=======================================\n");
@@ -1113,52 +1090,172 @@ void CloudIoTManagement::print_pdu(const uint8_t *pdu_buffer, size_t num_bytes) 
  * CloudIoTManagement - IoTDataPacket Class Definition
  *****************************************************************************/
 
-void CloudIoTManagement::IoTDataPacket::serialize(uint8_t *output_buffer, size_t buffer_length) {
+void CloudIoTManagement::IoTDataPacket::serialize_packet(uint8_t *serialized_buffer, size_t &buffer_length) const {
   assert(buffer_length >= CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MAXIMUM);
-  // TODO(hcassar): Implement.
+
+  /* Flow/Topic */
+  serialized_buffer[0] = static_cast<uint8_t>(flow)   << 4 |
+                         static_cast<uint8_t>(topic)  << 0;
+  /* Device ID */
+  serialized_buffer[1] = static_cast<uint8_t>(device_id & 0xFF000000);
+  serialized_buffer[2] = static_cast<uint8_t>(device_id & 0x00FF0000);
+  serialized_buffer[3] = static_cast<uint8_t>(device_id & 0x0000FF00);
+  serialized_buffer[4] = static_cast<uint8_t>(device_id & 0x000000FF);
+  /* Timestamp */
+  encode_temporenc_timestamp(timestamp, &serialized_buffer[5], 8);
+  /* Data Length */
+  serialized_buffer[13] = data_length;
+  /* Data */
+  memcpy(&serialized_buffer[14], data, data_length);
+
+  buffer_length = CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MINIMUM + data_length;
 }
 
-size_t CloudIoTManagement::IoTDataPacket::get_serialized_length() const {
+size_t CloudIoTManagement::IoTDataPacket::get_max_serialized_length() const {
   return CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MAXIMUM;
+}
+
+long CloudIoTManagement::IoTDataPacket::send_and_recv_sim(CloudIoTManagement::scard &sc, uint8_t *response_buffer, size_t &buffer_length) {
+  assert(buffer_length >= CLOUDIOTMANAGEMENT_IOT_DATA_PACKET_SIZE_BYTES_MAXIMUM);
+  
+  (void) sc;
+
+  long ret = SRSRAN_SUCCESS;
+
+  printf("CloudIoTManagement: `send_and_recv_sim` is not yet supported for IoT Data packets. Bypass sending to SIM, and setting response equal to input...");
+  serialize_packet(response_buffer, buffer_length);
+
+  return ret;
 }
 
 /*****************************************************************************
  * CloudIoTManagement - IoTStatusPacket Class Definition
  *****************************************************************************/
 
-void CloudIoTManagement::IoTStatusPacket::serialize(uint8_t *output_buffer, size_t buffer_length) {
+void CloudIoTManagement::IoTStatusPacket::serialize_packet(uint8_t *serialized_buffer, size_t &buffer_length) const {
   assert(buffer_length >= CLOUDIOTMANAGEMENT_IOT_STATUS_PACKET_SIZE_BYTES);
-  // TODO(hcassar): Implement.
+
+  /* Flow/Topic */
+  serialized_buffer[0] = static_cast<uint8_t>(flow)   << 4 |
+                         static_cast<uint8_t>(topic)  << 0;
+  /* Status */
+  serialized_buffer[1] = static_cast<uint8_t>(status) << 4;
+
+  buffer_length = CLOUDIOTMANAGEMENT_IOT_STATUS_PACKET_SIZE_BYTES;
 }
 
-size_t CloudIoTManagement::IoTStatusPacket::get_serialized_length() const {
+size_t CloudIoTManagement::IoTStatusPacket::get_max_serialized_length() const {
   return CLOUDIOTMANAGEMENT_IOT_STATUS_PACKET_SIZE_BYTES;
+}
+
+long CloudIoTManagement::IoTStatusPacket::send_and_recv_sim(CloudIoTManagement::scard &sc, uint8_t *response_buffer, size_t &buffer_length) {
+  assert(buffer_length >= CLOUDIOTMANAGEMENT_IOT_STATUS_PACKET_SIZE_BYTES);
+
+  (void) sc;
+
+  printf("CloudIoTManagement: `send_and_recv_sim` is not yet supported for IoT Status packets. Bypass sending to SIM, and setting response equal to input...");
+  serialize_packet(response_buffer, buffer_length);
+
+  return SRSRAN_SUCCESS;
 }
 
 /*****************************************************************************
  * CloudIoTManagement - CarrierSwitchPerformPacket Class Definition
  *****************************************************************************/
 
-void CloudIoTManagement::CarrierSwitchPerformPacket::serialize(uint8_t *output_buffer, size_t buffer_length) {
+void CloudIoTManagement::CarrierSwitchPerformPacket::serialize_packet(uint8_t *serialized_buffer, size_t &buffer_length) const {
   assert(buffer_length >= CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES);
-  // TODO(hcassar): Implement.
+
+  /* Flow/Topic */
+  serialized_buffer[0] = static_cast<uint8_t>(flow)   << 4 |
+                         static_cast<uint8_t>(topic)  << 0;
+  /* Carrier ID */
+  serialized_buffer[1] = static_cast<uint8_t>(carrier_id) << 4;
+
+  buffer_length = CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES;
 }
 
-size_t CloudIoTManagement::CarrierSwitchPerformPacket::get_serialized_length() const {
+size_t CloudIoTManagement::CarrierSwitchPerformPacket::get_max_serialized_length() const {
   return CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES;
+}
+
+long CloudIoTManagement::CarrierSwitchPerformPacket::send_and_recv_sim(CloudIoTManagement::scard &sc, uint8_t *response_buffer, size_t &buffer_length) {
+  assert(buffer_length >= CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES);
+
+  long ret;
+
+  /* Serialize the packet. */
+  uint8_t serialized_buffer[CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES];
+  size_t num_serialized_bytes = CLOUDIOTMANAGEMENT_CARRIER_SWITCH_PERFORM_PACKET_SIZE_BYTES;
+  serialize_packet(serialized_buffer, num_serialized_bytes);
+
+  /* Construct TERMINAL_RESPONSE command, and all of the input args to the transmit method. */
+  uint8_t cmd[50] = {/* APDU Header */ SIM_CMD_TERMINAL_RESPONSE,
+                     /* Payload (Modem Packet) Length */ static_cast<uint8_t>(num_serialized_bytes)};
+  memcpy(&cmd[6], serialized_buffer, num_serialized_bytes);  // sizeof(SIM_CMD_TERMINAL_RESPONSE) + 2
+  size_t  cmdlen = 5 + num_serialized_bytes;  // sizeof(SIM_CMD_TERMINAL_RESPONSE) + 1
+  uint8_t resp[3]; /* 1-byte Length, 2-byte APDU Footer */
+  size_t resp_len = sizeof(resp);
+
+  /* Perform transmit for TERMINAL_RESPONSE command. */
+  ret = sc.transmit(cmd, cmdlen, resp, &resp_len);
+  if (ret != SCARD_S_SUCCESS) {
+    printf("CloudIoTManagement SCARD ERROR: SCARD: SCardTransmit for TERMINAL_RESPONSE command failed %s\n", pcsc_stringify_error(ret));
+    return -1;
+  }
+
+  /* Construct CS_RESPONSE command, and all of the input args to the transmit method. */
+  uint8_t get_ack_cmd[50] = {/* APDU Header */ SIM_CMD_CS_RESPONSE,
+                             /* Carrier Switch ACK */ 0x11};
+  size_t  get_ack_cmdlen = 5;  // sizeof(SIM_CMD_CS_RESPONSE) + 1
+  uint8_t get_ack_resp[17 + CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES];  // R-APDU Header (14), Length (1), CarrierSwitchACK Payload (CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES), APDU Footer (2)
+  size_t get_ack_resp_len = sizeof(resp);
+
+  /* Perform transmit for CS_RESPONSE command. */
+  ret = sc.transmit(get_ack_cmd, get_ack_cmdlen, get_ack_resp, &get_ack_resp_len);
+  if (ret != SCARD_S_SUCCESS) {
+    printf("CloudIoTManagement SCARD ERROR: SCARD: SCardTransmit for CS_RESPONSE command failed %s\n", pcsc_stringify_error(ret));
+    return -1;
+  }
+
+  /* Copy response data (CarrierSwitchACK packet) to caller's buffer. */
+  memcpy(response_buffer, &get_ack_resp[15], CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES);
+
+  buffer_length = CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES;
+
+  return SRSRAN_SUCCESS;
 }
 
 /*****************************************************************************
  * CloudIoTManagement - CarrierSwitchACKPacket Class Definition
  *****************************************************************************/
 
-void CloudIoTManagement::CarrierSwitchACKPacket::serialize(uint8_t *output_buffer, size_t buffer_length) {
+void CloudIoTManagement::CarrierSwitchACKPacket::serialize_packet(uint8_t *serialized_buffer, size_t &buffer_length) const {
   assert(buffer_length >= CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES);
-  // TODO(hcassar): Implement.
+
+  /* Flow/Topic */
+  serialized_buffer[0] = static_cast<uint8_t>(flow)   << 4 |
+                         static_cast<uint8_t>(topic)  << 0;
+  /* Carrier ID */
+  serialized_buffer[1] = static_cast<uint8_t>(status)     << 4 |
+                         static_cast<uint8_t>(carrier_id) << 0;
+
+  buffer_length = CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES;
 }
 
-size_t CloudIoTManagement::CarrierSwitchACKPacket::get_serialized_length() const {
+size_t CloudIoTManagement::CarrierSwitchACKPacket::get_max_serialized_length() const {
   return CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES;
+}
+
+long CloudIoTManagement::CarrierSwitchACKPacket::send_and_recv_sim(CloudIoTManagement::scard &sc, uint8_t *response_buffer, size_t &buffer_length) {
+  assert(buffer_length >= CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES);
+
+  (void) sc;
+
+  printf("CloudIoTManagement: `send_and_recv_sim` is not yet supported for Carrier Switch ACK packets. Bypass sending to SIM, and setting response equal to input...");
+  serialize_packet(response_buffer, buffer_length);
+
+  return SRSRAN_SUCCESS;
 }
 
 /*****************************************************************************
