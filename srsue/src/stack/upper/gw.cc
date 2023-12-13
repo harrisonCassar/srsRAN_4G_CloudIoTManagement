@@ -920,7 +920,7 @@ void CloudIoTManagement::handle_packet(const uint8_t *pdu_buffer, size_t num_byt
       }
 
       /* Decode packet, and send to the SIM card (if there was no decoding errors). */
-      CarrierSwitchPerformPacket packet;
+      CarrierSwitchACKPacket packet;
       if (!decode_carrier_switch_ack(&pdu_buffer[PDU_HEADER_SIZE_BYTES], packet)) {
         printf("CloudIOTManagement: An error occured while decoding the Carrier Switch ACK packet! Dropping packet/avoiding transmission to the SIM card...\n");
         return;
