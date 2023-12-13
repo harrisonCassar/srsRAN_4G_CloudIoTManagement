@@ -54,13 +54,6 @@ struct gw_args_t {
   std::string tun_dev_netmask;
 };
 
-// typedef enum { SCARD_GSM_SIM, SCARD_USIM } sim_types_t;
-
-// static inline uint16_t to_uint16(const uint8_t* a)
-// {
-//   return (a[0] << 8) | a[1];
-// }
-
 // TODO(hcassar): Consider adding CloudIoTManagement source code to a new file to be added in the build system.
 
 class CloudIoTManagement
@@ -133,9 +126,9 @@ public:
   class scard
   {
   public:
-    scard(bool _debug) : scard_context(nullptr),
-                         scard_handle(nullptr),
-                         scard_protcol(0),
+    scard(bool _debug) : scard_context(0),
+                         scard_handle(0),
+                         scard_protocol(0),
                          debug(_debug) {}
     ~scard(){};
 
