@@ -1253,7 +1253,7 @@ long CloudIoTManagement::CarrierSwitchPerformPacket::send_and_recv_sim(CloudIoTM
   /* Construct TERMINAL_RESPONSE command, and all of the input args to the transmit method. */
   uint8_t cmd[50] = {/* APDU Header */ SIM_CMD_TERMINAL_RESPONSE,
                      /* Payload (Modem Packet) Length */ static_cast<uint8_t>(num_serialized_bytes)};
-  memcpy(&cmd[6], serialized_buffer, num_serialized_bytes);  // sizeof(SIM_CMD_TERMINAL_RESPONSE) + 2
+  memcpy(&cmd[5], serialized_buffer, num_serialized_bytes);  // sizeof(SIM_CMD_TERMINAL_RESPONSE) + 2
   size_t  cmdlen = 5 + num_serialized_bytes;  // sizeof(SIM_CMD_TERMINAL_RESPONSE) + 1
   uint8_t resp[3]; /* 1-byte Length, 2-byte APDU Footer */
   size_t resp_len = sizeof(resp);
@@ -1270,7 +1270,7 @@ long CloudIoTManagement::CarrierSwitchPerformPacket::send_and_recv_sim(CloudIoTM
                              /* Carrier Switch ACK */ 0x11};
   size_t  get_ack_cmdlen = 5;  // sizeof(SIM_CMD_CS_RESPONSE) + 1
   uint8_t get_ack_resp[17 + CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES];  // R-APDU Header (14), Length (1), CarrierSwitchACK Payload (CLOUDIOTMANAGEMENT_CARRIER_SWITCH_ACK_PACKET_SIZE_BYTES), APDU Footer (2)
-  size_t get_ack_resp_len = sizeof(resp);
+  size_t get_ack_resp_len = sizeof(get_ack_resp);
 
   /* Perform transmit for CS_RESPONSE command. */
   ret = sc.transmit(get_ack_cmd, get_ack_cmdlen, get_ack_resp, &get_ack_resp_len);
@@ -1323,7 +1323,6 @@ long CloudIoTManagement::CarrierSwitchACKPacket::send_and_recv_sim(CloudIoTManag
  * CloudIoTManagement - scard Class Definition
  *****************************************************************************/
 
-// return 0 if initialization was successfull, -1 otherwies
 int CloudIoTManagement::scard::init()
 {
   int  ret_value    = SRSRAN_ERROR;
